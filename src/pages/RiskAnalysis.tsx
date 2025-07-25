@@ -8,45 +8,36 @@ import { useAuth } from '@/hooks/useAuth'
 import toast from 'react-hot-toast'
 import { BarChart3, FileText, AlertTriangle } from 'lucide-react'
 import RiskVisualization from '@/components/RiskVisualization'
+import { supabase } from '@/integrations/supabase/client'
 
-// 预定义的prompt选项，对应prompt registry中的keys
+// Available risk analysis prompts
 const AVAILABLE_PROMPTS = [
   {
-    id: 'risk_classifier',
-    name: 'Risk Classification',
-    description: 'Comprehensive risk categorization and severity assessment'
+    id: 'credit_risk',
+    name: 'Credit Risk Analysis',
+    description: 'Analyze credit risk exposure and assessment indicators'
   },
   {
-    id: 'compliance_audit_v2',
-    name: 'Compliance Audit',
-    description: 'SEC, FINRA, SOX, and Basel regulatory compliance review'
+    id: 'market_risk',
+    name: 'Market Risk Analysis',
+    description: 'Evaluate market volatility and price risk exposure'
   },
   {
-    id: 'esg_risk_v2',
-    name: 'ESG Risk Assessment',
-    description: 'Environmental, Social, and Governance risk analysis'
+    id: 'operational_risk',
+    name: 'Operational Risk Analysis',
+    description: 'Assess operational failures and process risk indicators'
   },
   {
-    id: 'financial_health_v3',
-    name: 'Financial Health Diagnostic',
-    description: 'Multi-dimensional financial health and stability assessment'
-  },
-  {
-    id: 'cybersecurity_risk_v2',
-    name: 'Cybersecurity Risk',
-    description: 'Data security and cyber threat risk evaluation'
-  },
-  {
-    id: 'operational_resilience_v2',
-    name: 'Operational Resilience',
-    description: 'Business continuity and operational risk assessment'
+    id: 'liquidity_risk',
+    name: 'Liquidity Risk Analysis',
+    description: 'Examine liquidity constraints and funding risk factors'
   }
 ]
 
 const RiskAnalysis = () => {
   const { user } = useAuth()
   const [loading, setLoading] = useState(false)
-  const [selectedPrompts, setSelectedPrompts] = useState<string[]>(['risk_classifier'])
+  const [selectedPrompts, setSelectedPrompts] = useState<string[]>(['credit_risk'])
   const [result, setResult] = useState<any>(null)
   const [availableDocuments, setAvailableDocuments] = useState<any[]>([])
   const [selectedDocument, setSelectedDocument] = useState<string>('')
@@ -96,10 +87,10 @@ const RiskAnalysis = () => {
     setLoading(true)
     
     try {
-      // 获取选中文档的数据
+      // Get document data from localStorage
       const documentData = JSON.parse(localStorage.getItem(`document_${selectedDocument}`) || '{}')
       
-      if (!documentData.paragraphs) {
+      if (!documentData.content && !documentData.text) {
         toast.error('No document content found for analysis')
         setLoading(false)
         return
@@ -108,37 +99,32 @@ const RiskAnalysis = () => {
       console.log('Starting risk analysis for document:', selectedDocument)
       console.log('Selected prompts:', selectedPrompts)
       
-      // 真正调用后端API进行风险分析
-      const response = await fetch(`http://localhost:8000/api/analysis/risk`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          document_id: selectedDocument,
-          prompts: selectedPrompts,
-          user_id: user?.id || 'demo-user',
-          paragraphs: documentData.paragraphs || []
-        }),
+      // Call Supabase edge function for risk analysis
+      const response = await supabase.functions.invoke('risk-analysis', {
+        body: {
+          document: {
+            id: selectedDocument,
+            name: documentData.company_name || 'Unknown Document',
+            content: documentData.content || documentData.text || ''
+          },
+          prompts: selectedPrompts
+        }
       })
 
-      console.log('API Response status:', response.status)
-      
-      if (!response.ok) {
-        const errorText = await response.text()
-        console.error('API Error:', errorText)
-        toast.error(`Analysis failed: ${errorText}`)
+      if (response.error) {
+        console.error('Analysis error:', response.error)
+        toast.error(`Analysis failed: ${response.error.message}`)
         return
       }
 
-      const data = await response.json()
+      const data = response.data
       console.log('Analysis result:', data)
       setResult(data)
       toast.success('Risk analysis completed successfully!')
       
     } catch (error) {
       console.error('Network error during analysis:', error)
-      toast.error('Failed to connect to analysis API. Please ensure the backend is running.')
+      toast.error('Failed to connect to analysis service. Please try again.')
     } finally {
       setLoading(false)
     }
