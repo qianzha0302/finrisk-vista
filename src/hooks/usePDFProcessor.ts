@@ -1,8 +1,5 @@
 import { useState, useCallback } from 'react'
-import * as pdfjsLib from 'pdfjs-dist'
-
-// 设置PDF.js worker
-pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`
+import { supabase } from '@/integrations/supabase/client'
 
 interface PDFChunk {
   text: string
@@ -38,21 +35,6 @@ export const usePDFProcessor = () => {
     progress: 0
   })
 
-  const riskKeywords = ['risk', 'uncertainty', 'threat', 'challenge', 'exposure', '风险', '不确定性', '威胁', '挑战']
-
-  const chunkText = (text: string, chunkSize: number = 1000, overlap: number = 200): string[] => {
-    const chunks: string[] = []
-    let start = 0
-
-    while (start < text.length) {
-      const end = Math.min(start + chunkSize, text.length)
-      chunks.push(text.slice(start, end))
-      start += chunkSize - overlap
-    }
-
-    return chunks
-  }
-
   const processDelay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
 
   const processPDF = useCallback(async (
@@ -64,109 +46,33 @@ export const usePDFProcessor = () => {
     setProgress({ stage: 'parsing', progress: 0 })
 
     try {
-      // Stage 1: Parse PDF
-      setProgress({ stage: 'parsing', progress: 0 })
-      
-      const arrayBuffer = await file.arrayBuffer()
-      const loadingTask = pdfjsLib.getDocument(arrayBuffer)
-      const pdf = await loadingTask.promise
-      
-      setProgress({ 
-        stage: 'parsing', 
-        progress: 50,
-        totalPages: pdf.numPages 
+      // Prepare form data for edge function
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('document_id', documentId)
+      formData.append('company_name', companyName)
+
+      setProgress({ stage: 'parsing', progress: 25 })
+
+      // Call the PDF processor edge function
+      const { data, error } = await supabase.functions.invoke('pdf-processor', {
+        body: formData,
       })
 
-      // Stage 2: Extract text from all pages
-      setProgress({ 
-        stage: 'chunking', 
-        progress: 0,
-        totalPages: pdf.numPages 
-      })
-
-      let fullText = ''
-      
-      for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
-        const page = await pdf.getPage(pageNum)
-        const textContent = await page.getTextContent()
-        const pageText = textContent.items
-          .map((item: any) => item.str)
-          .join(' ')
-        
-        fullText += pageText + '\n'
-        
-        // Update progress
-        const progress = Math.round((pageNum / pdf.numPages) * 100)
-        setProgress({ 
-          stage: 'chunking', 
-          progress,
-          currentPage: pageNum,
-          totalPages: pdf.numPages 
-        })
-        
-        // Add small delay to show progress
-        await processDelay(50)
+      if (error) {
+        throw new Error(`Edge function error: ${error.message}`)
       }
 
-      
-      // Stage 3: Chunk the full text
-      const chunks = chunkText(fullText)
-      
-      // Stage 4: Filter and create paragraphs
+      setProgress({ stage: 'chunking', progress: 50 })
+      await processDelay(500)
 
-      setProgress({ 
-        stage: 'filtering', 
-        progress: 0,
-        totalChunks: chunks.length 
-      })
-
-      const paragraphs: PDFChunk[] = []
-      
-      for (let i = 0; i < chunks.length; i++) {
-        const chunk = chunks[i]
-        
-        // Check if chunk contains risk-related keywords
-        const hasRiskKeyword = riskKeywords.some(keyword => 
-          chunk.toLowerCase().includes(keyword.toLowerCase())
-        )
-
-        if (hasRiskKeyword && chunk.trim().length > 50) {
-          paragraphs.push({
-            text: chunk.trim(),
-            page: Math.floor((i / chunks.length) * pdf.numPages) + 1,
-            metadata: { company: companyName }
-          })
-        }
-
-        // Update progress
-        const progress = Math.round(((i + 1) / chunks.length) * 100)
-        setProgress({ 
-          stage: 'filtering', 
-          progress,
-          chunksProcessed: i + 1,
-          totalChunks: chunks.length 
-        })
-        
-        // Add small delay every 10 chunks to show progress
-        if (i % 10 === 0) {
-          await processDelay(50)
-        }
-      }
+      setProgress({ stage: 'filtering', progress: 75 })
+      await processDelay(500)
 
       setProgress({ stage: 'complete', progress: 100 })
       await processDelay(200)
 
-      const result: PDFProcessorResult = {
-        document_id: documentId,
-        company_name: companyName,
-        file_name: file.name,
-        content: fullText,
-        text: fullText,
-        paragraphs,
-        processed: true
-      }
-
-      return result
+      return data as PDFProcessorResult
 
     } catch (error) {
       console.error('PDF处理错误:', error)
