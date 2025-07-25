@@ -1,5 +1,8 @@
 import { useState, useCallback } from 'react'
-import pdfParse from 'pdf-parse'
+import * as pdfjsLib from 'pdfjs-dist'
+
+// 设置PDF.js worker
+pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`
 
 interface PDFChunk {
   text: string
@@ -62,33 +65,55 @@ export const usePDFProcessor = () => {
 
     try {
       // Stage 1: Parse PDF
-      const buffer = await file.arrayBuffer()
-      await processDelay(100)
+      setProgress({ stage: 'parsing', progress: 0 })
       
-      setProgress({ stage: 'parsing', progress: 30 })
-      const data = await pdfParse(new Uint8Array(buffer))
+      const arrayBuffer = await file.arrayBuffer()
+      const loadingTask = pdfjsLib.getDocument(arrayBuffer)
+      const pdf = await loadingTask.promise
       
-      setProgress({ stage: 'parsing', progress: 100 })
-      await processDelay(200)
+      setProgress({ 
+        stage: 'parsing', 
+        progress: 50,
+        totalPages: pdf.numPages 
+      })
 
-      // Stage 2: Chunk text
+      // Stage 2: Extract text from all pages
       setProgress({ 
         stage: 'chunking', 
         progress: 0,
-        totalPages: data.numpages 
+        totalPages: pdf.numPages 
       })
 
-      const fullText = data.text
+      let fullText = ''
+      
+      for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+        const page = await pdf.getPage(pageNum)
+        const textContent = await page.getTextContent()
+        const pageText = textContent.items
+          .map((item: any) => item.str)
+          .join(' ')
+        
+        fullText += pageText + '\n'
+        
+        // Update progress
+        const progress = Math.round((pageNum / pdf.numPages) * 100)
+        setProgress({ 
+          stage: 'chunking', 
+          progress,
+          currentPage: pageNum,
+          totalPages: pdf.numPages 
+        })
+        
+        // Add small delay to show progress
+        await processDelay(50)
+      }
+
+      
+      // Stage 3: Chunk the full text
       const chunks = chunkText(fullText)
       
-      setProgress({ 
-        stage: 'chunking', 
-        progress: 50,
-        totalChunks: chunks.length 
-      })
-      await processDelay(300)
+      // Stage 4: Filter and create paragraphs
 
-      // Stage 3: Filter and create paragraphs
       setProgress({ 
         stage: 'filtering', 
         progress: 0,
@@ -108,7 +133,7 @@ export const usePDFProcessor = () => {
         if (hasRiskKeyword && chunk.trim().length > 50) {
           paragraphs.push({
             text: chunk.trim(),
-            page: Math.floor((i / chunks.length) * data.numpages) + 1,
+            page: Math.floor((i / chunks.length) * pdf.numPages) + 1,
             metadata: { company: companyName }
           })
         }
