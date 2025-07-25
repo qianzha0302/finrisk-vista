@@ -10,34 +10,44 @@ import { BarChart3, FileText, AlertTriangle } from 'lucide-react'
 import RiskVisualization from '@/components/RiskVisualization'
 import { supabase } from '@/integrations/supabase/client'
 
-// Available risk analysis prompts
+// Available risk analysis prompts matching prompt_registry
 const AVAILABLE_PROMPTS = [
   {
-    id: 'credit_risk',
-    name: 'Credit Risk Analysis',
-    description: 'Analyze credit risk exposure and assessment indicators'
+    id: 'risk_classifier',
+    name: 'Risk Classification',
+    description: 'Comprehensive risk categorization and severity assessment'
   },
   {
-    id: 'market_risk',
-    name: 'Market Risk Analysis',
-    description: 'Evaluate market volatility and price risk exposure'
+    id: 'compliance_audit_v2',
+    name: 'Compliance Audit',
+    description: 'SEC, FINRA, SOX, and Basel regulatory compliance review'
   },
   {
-    id: 'operational_risk',
-    name: 'Operational Risk Analysis',
-    description: 'Assess operational failures and process risk indicators'
+    id: 'esg_risk_v2',
+    name: 'ESG Risk Assessment',
+    description: 'Environmental, Social, and Governance risk analysis'
   },
   {
-    id: 'liquidity_risk',
-    name: 'Liquidity Risk Analysis',
-    description: 'Examine liquidity constraints and funding risk factors'
+    id: 'financial_health_v3',
+    name: 'Financial Health Diagnostic',
+    description: 'Multi-dimensional financial health and stability assessment'
+  },
+  {
+    id: 'cybersecurity_risk_v2',
+    name: 'Cybersecurity Risk',
+    description: 'Data security and cyber threat risk evaluation'
+  },
+  {
+    id: 'operational_resilience_v2',
+    name: 'Operational Resilience',
+    description: 'Business continuity and operational risk assessment'
   }
 ]
 
 const RiskAnalysis = () => {
   const { user } = useAuth()
   const [loading, setLoading] = useState(false)
-  const [selectedPrompts, setSelectedPrompts] = useState<string[]>(['credit_risk'])
+  const [selectedPrompts, setSelectedPrompts] = useState<string[]>(['risk_classifier'])
   const [result, setResult] = useState<any>(null)
   const [availableDocuments, setAvailableDocuments] = useState<any[]>([])
   const [selectedDocument, setSelectedDocument] = useState<string>('')
