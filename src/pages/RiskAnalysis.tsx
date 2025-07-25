@@ -1,12 +1,12 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Textarea } from '@/components/ui/textarea'
 import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useAuth } from '@/hooks/useAuth'
 import toast from 'react-hot-toast'
-import { BarChart3, Plus, Trash2 } from 'lucide-react'
+import { BarChart3, FileText, AlertTriangle } from 'lucide-react'
 import RiskVisualization from '@/components/RiskVisualization'
 
 // 预定义的prompt选项，对应prompt registry中的keys
@@ -46,25 +46,38 @@ const AVAILABLE_PROMPTS = [
 const RiskAnalysis = () => {
   const { user } = useAuth()
   const [loading, setLoading] = useState(false)
-  const [paragraphs, setParagraphs] = useState([''])
   const [selectedPrompts, setSelectedPrompts] = useState<string[]>(['risk_classifier'])
   const [result, setResult] = useState<any>(null)
+  const [availableDocuments, setAvailableDocuments] = useState<any[]>([])
+  const [selectedDocument, setSelectedDocument] = useState<string>('')
 
-  const addParagraph = () => {
-    setParagraphs([...paragraphs, ''])
-  }
-
-  const removeParagraph = (index: number) => {
-    if (paragraphs.length > 1) {
-      setParagraphs(paragraphs.filter((_, i) => i !== index))
+  // 加载可用的文档列表
+  useEffect(() => {
+    const loadDocuments = () => {
+      const documents = []
+      // 从localStorage获取已上传的文档
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i)
+        if (key?.startsWith('document_')) {
+          try {
+            const docData = JSON.parse(localStorage.getItem(key) || '{}')
+            documents.push({
+              id: key.replace('document_', ''),
+              ...docData
+            })
+          } catch (error) {
+            console.error('Error parsing document data:', error)
+          }
+        }
+      }
+      setAvailableDocuments(documents)
+      if (documents.length > 0 && !selectedDocument) {
+        setSelectedDocument(documents[0].id)
+      }
     }
-  }
 
-  const updateParagraph = (index: number, value: string) => {
-    const updated = [...paragraphs]
-    updated[index] = value
-    setParagraphs(updated)
-  }
+    loadDocuments()
+  }, [])
 
   const togglePrompt = (promptId: string) => {
     setSelectedPrompts(prev => 
@@ -75,30 +88,32 @@ const RiskAnalysis = () => {
   }
 
   const handleAnalysis = async () => {
-    const validParagraphs = paragraphs.filter(p => p.trim())
-
-    if (!validParagraphs.length || !selectedPrompts.length) {
-      toast.error('Please provide at least one paragraph and select at least one analysis type')
+    if (!selectedDocument || !selectedPrompts.length) {
+      toast.error('Please select a document and at least one analysis type')
       return
     }
 
     setLoading(true)
     
     try {
-      // 将paragraphs转换为risk_analyzer期望的格式
-      const formattedParagraphs = validParagraphs.map((text, index) => ({
-        text,
-        id: `para_${index}`
-      }))
+      // 获取选中文档的数据
+      const documentData = JSON.parse(localStorage.getItem(`document_${selectedDocument}`) || '{}')
+      
+      if (!documentData.paragraphs) {
+        toast.error('No document content found for analysis')
+        setLoading(false)
+        return
+      }
 
-      const response = await fetch('http://localhost:8000/analyze', {
+      // 尝试连接后端进行分析
+      const response = await fetch(`http://localhost:8000/api/analysis/risk`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          paragraphs: formattedParagraphs,
-          prompts: selectedPrompts, // 发送prompt IDs而不是文本
+          document_id: selectedDocument,
+          prompts: selectedPrompts,
           user_id: user?.id || 'demo-user'
         }),
       })
@@ -108,36 +123,47 @@ const RiskAnalysis = () => {
         setResult(data)
         toast.success('Risk analysis completed!')
       } else {
-        // Mock result fallback
-        setResult({
-          results: selectedPrompts.map(promptId => ({
-            prompt: promptId,
-            analysis: {
-              risk_type: 'Market Risk',
-              severity: 7,
-              confidence: 0.85,
-              summary: 'Significant market exposure identified'
-            }
-          }))
-        })
+        // 使用模拟数据
+        const mockAnalysis = generateMockAnalysis(documentData, selectedPrompts)
+        setResult(mockAnalysis)
         toast.success('Demo analysis completed (API unavailable)')
       }
     } catch (error) {
-      // Mock result fallback
-      setResult({
-        results: selectedPrompts.map(promptId => ({
-          prompt: promptId,
-          analysis: {
-            risk_type: 'Market Risk',
-            severity: 7,
-            confidence: 0.85,
-            summary: 'Significant market exposure identified'
-          }
-        }))
-      })
+      // 使用模拟数据
+      const documentData = JSON.parse(localStorage.getItem(`document_${selectedDocument}`) || '{}')
+      const mockAnalysis = generateMockAnalysis(documentData, selectedPrompts)
+      setResult(mockAnalysis)
       toast.success('Demo analysis completed (API unavailable)')
     } finally {
       setLoading(false)
+    }
+  }
+
+  const generateMockAnalysis = (documentData: any, prompts: string[]) => {
+    const riskTypes = ['Market Risk', 'Credit Risk', 'Operational Risk', 'Liquidity Risk', 'Regulatory Risk']
+    
+    return {
+      document_id: selectedDocument,
+      company_name: documentData.company_name || 'Unknown Company',
+      results: prompts.map((promptId, index) => ({
+        prompt: promptId,
+        analysis: {
+          risk_type: riskTypes[index % riskTypes.length],
+          severity: Math.floor(Math.random() * 3) + 6, // 6-8 for demo
+          confidence: 0.75 + Math.random() * 0.2, // 0.75-0.95 for demo
+          summary: `Analysis using ${AVAILABLE_PROMPTS.find(p => p.id === promptId)?.name} identified significant risk factors in the document.`,
+          key_findings: [
+            'Exposure to market volatility detected',
+            'Regulatory compliance gaps identified', 
+            'Operational risk factors present'
+          ],
+          recommendations: [
+            'Implement additional risk controls',
+            'Enhance monitoring procedures',
+            'Review compliance frameworks'
+          ]
+        }
+      }))
     }
   }
 
@@ -146,7 +172,7 @@ const RiskAnalysis = () => {
       <div>
         <h1 className="text-3xl font-bold text-foreground">Risk Analysis</h1>
         <p className="text-muted-foreground">
-          Analyze financial documents using advanced risk assessment models
+          Analyze uploaded financial documents using advanced risk assessment models
         </p>
       </div>
 
@@ -155,43 +181,55 @@ const RiskAnalysis = () => {
           <CardHeader>
             <CardTitle className="flex items-center space-x-2">
               <BarChart3 className="h-5 w-5" />
-              <span>Analysis Input</span>
+              <span>Document Analysis</span>
             </CardTitle>
             <CardDescription>
-              Provide document paragraphs and select analysis types
+              Select a document and analysis types for comprehensive risk assessment
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
-            {/* Document Paragraphs Section */}
+            {/* Document Selection Section */}
             <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <Label>Document Paragraphs</Label>
-                <Button variant="outline" size="sm" onClick={addParagraph}>
-                  <Plus className="h-4 w-4 mr-1" />
-                  Add
-                </Button>
-              </div>
-              {paragraphs.map((paragraph, index) => (
-                <div key={index} className="flex space-x-2">
-                  <Textarea
-                    value={paragraph}
-                    onChange={(e) => updateParagraph(index, e.target.value)}
-                    placeholder={`Enter paragraph ${index + 1}...`}
-                    rows={3}
-                    className="flex-1"
-                  />
-                  {paragraphs.length > 1 && (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => removeParagraph(index)}
-                      className="self-start mt-1"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  )}
+              <Label>Select Document</Label>
+              {availableDocuments.length > 0 ? (
+                <Select value={selectedDocument} onValueChange={setSelectedDocument}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Choose a document to analyze" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableDocuments.map((doc) => (
+                      <SelectItem key={doc.id} value={doc.id}>
+                        <div className="flex items-center space-x-2">
+                          <FileText className="h-4 w-4" />
+                          <span>{doc.company_name || 'Unknown Company'} - {doc.document_id}</span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <div className="flex items-center space-x-2 p-3 border rounded-lg bg-muted/50">
+                  <AlertTriangle className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-sm text-muted-foreground">
+                    No documents available. Please upload a document first.
+                  </span>
                 </div>
-              ))}
+              )}
+
+              {/* Document Info */}
+              {selectedDocument && availableDocuments.length > 0 && (
+                <div className="p-3 border rounded-lg bg-muted/20">
+                  <div className="text-sm">
+                    <div className="font-medium">Selected Document:</div>
+                    <div className="text-muted-foreground">
+                      {availableDocuments.find(doc => doc.id === selectedDocument)?.company_name}
+                    </div>
+                    <div className="text-xs text-muted-foreground mt-1">
+                      ID: {selectedDocument}
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Analysis Types Section */}
@@ -224,7 +262,7 @@ const RiskAnalysis = () => {
 
             <Button 
               onClick={handleAnalysis} 
-              disabled={loading || selectedPrompts.length === 0}
+              disabled={loading || selectedPrompts.length === 0 || !selectedDocument}
               className="w-full"
             >
               {loading ? 'Analyzing...' : 'Run Risk Analysis'}
@@ -282,9 +320,31 @@ const RiskAnalysis = () => {
                           </p>
                         )}
                         
-                        {item.paragraph && (
-                          <div className="text-xs text-muted-foreground bg-muted p-2 rounded">
-                            <strong>Analyzed text:</strong> {item.paragraph.substring(0, 150)}...
+                        {item.analysis?.key_findings && (
+                          <div>
+                            <div className="text-sm font-medium mb-2">Key Findings:</div>
+                            <ul className="text-xs text-muted-foreground space-y-1">
+                              {item.analysis.key_findings.map((finding: string, idx: number) => (
+                                <li key={idx} className="flex items-start space-x-2">
+                                  <span className="w-1 h-1 bg-current rounded-full mt-2 flex-shrink-0" />
+                                  <span>{finding}</span>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                        
+                        {item.analysis?.recommendations && (
+                          <div>
+                            <div className="text-sm font-medium mb-2">Recommendations:</div>
+                            <ul className="text-xs text-muted-foreground space-y-1">
+                              {item.analysis.recommendations.map((rec: string, idx: number) => (
+                                <li key={idx} className="flex items-start space-x-2">
+                                  <span className="w-1 h-1 bg-current rounded-full mt-2 flex-shrink-0" />
+                                  <span>{rec}</span>
+                                </li>
+                              ))}
+                            </ul>
                           </div>
                         )}
                       </div>
@@ -299,7 +359,7 @@ const RiskAnalysis = () => {
             ) : (
               <div className="text-center text-muted-foreground py-8">
                 <BarChart3 className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                <p>Select analysis types and run analysis to see results here</p>
+                <p>Select a document and analysis types to see results here</p>
               </div>
             )}
           </CardContent>
@@ -310,7 +370,7 @@ const RiskAnalysis = () => {
       {result && (
         <RiskVisualization 
           analysisData={result} 
-          companyName="JPMorgan Chase & Co."
+          companyName={result.company_name || "Unknown Company"}
         />
       )}
     </div>
