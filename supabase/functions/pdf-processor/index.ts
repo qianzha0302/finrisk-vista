@@ -10,6 +10,9 @@ const corsHeaders = {
 // PDF.js library for server-side PDF processing
 import * as pdfjsLib from 'https://esm.sh/pdfjs-dist@4.0.379/legacy/build/pdf.mjs';
 
+// Disable worker for server-side processing
+(pdfjsLib as any).GlobalWorkerOptions.workerSrc = false;
+
 interface PDFChunk {
   text: string;
   page: number;
