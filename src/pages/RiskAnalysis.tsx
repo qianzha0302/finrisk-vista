@@ -7,6 +7,7 @@ import { Checkbox } from '@/components/ui/checkbox'
 import { useAuth } from '@/hooks/useAuth'
 import toast from 'react-hot-toast'
 import { BarChart3, Plus, Trash2 } from 'lucide-react'
+import RiskVisualization from '@/components/RiskVisualization'
 
 // 预定义的prompt选项，对应prompt registry中的keys
 const AVAILABLE_PROMPTS = [
@@ -141,7 +142,7 @@ const RiskAnalysis = () => {
   }
 
   return (
-    <div className="max-w-6xl mx-auto space-y-8">
+    <div className="max-w-7xl mx-auto space-y-8">
       <div>
         <h1 className="text-3xl font-bold text-foreground">Risk Analysis</h1>
         <p className="text-muted-foreground">
@@ -304,6 +305,14 @@ const RiskAnalysis = () => {
           </CardContent>
         </Card>
       </div>
+
+      {/* Risk Visualization Section */}
+      {result && (
+        <RiskVisualization 
+          analysisData={result} 
+          companyName="JPMorgan Chase & Co."
+        />
+      )}
     </div>
   )
 }
