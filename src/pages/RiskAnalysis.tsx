@@ -105,7 +105,10 @@ const RiskAnalysis = () => {
         return
       }
 
-      // 尝试连接后端进行分析
+      console.log('Starting risk analysis for document:', selectedDocument)
+      console.log('Selected prompts:', selectedPrompts)
+      
+      // 真正调用后端API进行风险分析
       const response = await fetch(`http://localhost:8000/api/analysis/risk`, {
         method: 'POST',
         headers: {
@@ -114,58 +117,33 @@ const RiskAnalysis = () => {
         body: JSON.stringify({
           document_id: selectedDocument,
           prompts: selectedPrompts,
-          user_id: user?.id || 'demo-user'
+          user_id: user?.id || 'demo-user',
+          paragraphs: documentData.paragraphs || []
         }),
       })
 
-      if (response.ok) {
-        const data = await response.json()
-        setResult(data)
-        toast.success('Risk analysis completed!')
-      } else {
-        // 使用模拟数据
-        const mockAnalysis = generateMockAnalysis(documentData, selectedPrompts)
-        setResult(mockAnalysis)
-        toast.success('Demo analysis completed (API unavailable)')
+      console.log('API Response status:', response.status)
+      
+      if (!response.ok) {
+        const errorText = await response.text()
+        console.error('API Error:', errorText)
+        toast.error(`Analysis failed: ${errorText}`)
+        return
       }
+
+      const data = await response.json()
+      console.log('Analysis result:', data)
+      setResult(data)
+      toast.success('Risk analysis completed successfully!')
+      
     } catch (error) {
-      // 使用模拟数据
-      const documentData = JSON.parse(localStorage.getItem(`document_${selectedDocument}`) || '{}')
-      const mockAnalysis = generateMockAnalysis(documentData, selectedPrompts)
-      setResult(mockAnalysis)
-      toast.success('Demo analysis completed (API unavailable)')
+      console.error('Network error during analysis:', error)
+      toast.error('Failed to connect to analysis API. Please ensure the backend is running.')
     } finally {
       setLoading(false)
     }
   }
 
-  const generateMockAnalysis = (documentData: any, prompts: string[]) => {
-    const riskTypes = ['Market Risk', 'Credit Risk', 'Operational Risk', 'Liquidity Risk', 'Regulatory Risk']
-    
-    return {
-      document_id: selectedDocument,
-      company_name: documentData.company_name || 'Unknown Company',
-      results: prompts.map((promptId, index) => ({
-        prompt: promptId,
-        analysis: {
-          risk_type: riskTypes[index % riskTypes.length],
-          severity: Math.floor(Math.random() * 3) + 6, // 6-8 for demo
-          confidence: 0.75 + Math.random() * 0.2, // 0.75-0.95 for demo
-          summary: `Analysis using ${AVAILABLE_PROMPTS.find(p => p.id === promptId)?.name} identified significant risk factors in the document.`,
-          key_findings: [
-            'Exposure to market volatility detected',
-            'Regulatory compliance gaps identified', 
-            'Operational risk factors present'
-          ],
-          recommendations: [
-            'Implement additional risk controls',
-            'Enhance monitoring procedures',
-            'Review compliance frameworks'
-          ]
-        }
-      }))
-    }
-  }
 
   return (
     <div className="max-w-7xl mx-auto space-y-8">
