@@ -3,12 +3,15 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Progress } from '@/components/ui/progress'
 import { useAuth } from '@/hooks/useAuth'
+import { usePDFProcessor } from '@/hooks/usePDFProcessor'
 import toast from 'react-hot-toast'
-import { Upload, FileText } from 'lucide-react'
+import { Upload, FileText, AlertCircle, CheckCircle2 } from 'lucide-react'
 
 const UploadDocument = () => {
   const { user } = useAuth()
+  const { processPDF, processing, progress } = usePDFProcessor()
   const [loading, setLoading] = useState(false)
   const [formData, setFormData] = useState({
     file: null as File | null,
@@ -31,154 +34,64 @@ const UploadDocument = () => {
     e.preventDefault()
     
     if (!formData.file || !formData.document_id || !formData.company_name) {
-      toast.error('Please fill all fields and select a file')
+      toast.error('请填写所有字段并选择文件')
+      return
+    }
+
+    // Check if file is PDF
+    if (formData.file.type !== 'application/pdf') {
+      toast.error('目前只支持PDF文件处理')
       return
     }
 
     setLoading(true)
     
     try {
-      // Try to connect to backend first
-      const healthCheck = await fetch('http://localhost:8000/health', {
-        method: 'GET',
-        signal: AbortSignal.timeout(3000) // 3 second timeout
-      })
-
-      if (healthCheck.ok) {
-        // Backend is available, proceed with actual upload
-        await handleRealUpload()
-        resetForm()
-      } else {
-        // Backend is not responding properly
-        await handleMockUpload()
-        resetForm()
-      }
-    } catch (error) {
-      console.error('Backend connection error:', error)
-      // Backend is not available, use mock upload
-      await handleMockUpload()
+      // Process PDF directly in frontend
+      await handlePDFProcessing()
       resetForm()
+    } catch (error) {
+      console.error('PDF处理错误:', error)
+      toast.error(error instanceof Error ? error.message : 'PDF处理失败')
     } finally {
       setLoading(false)
     }
   }
 
-  const handleRealUpload = async () => {
+  const handlePDFProcessing = async () => {
     try {
-      // Step 1: Upload document
-      const uploadFormData = new FormData()
-      uploadFormData.append('file', formData.file!)
-      uploadFormData.append('document_id', formData.document_id)
-      uploadFormData.append('company_name', formData.company_name)
-      uploadFormData.append('user_id', user?.id || 'demo-user')
+      toast.success('开始处理PDF文档...')
+      
+      const result = await processPDF(
+        formData.file!,
+        formData.document_id,
+        formData.company_name
+      )
 
-      const uploadResponse = await fetch('http://localhost:8000/api/documents/upload', {
-        method: 'POST',
-        body: uploadFormData,
-      })
-
-      if (uploadResponse.ok) {
-        const uploadResult = await uploadResponse.json()
-        toast.success('Document uploaded successfully!')
-        
-        // Step 2: Process document with pdf_processor
-        const processResponse = await fetch(`http://localhost:8000/api/documents/${formData.document_id}/process`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            document_id: formData.document_id,
-            company_name: formData.company_name,
-            user_id: user?.id || 'demo-user'
-          }),
-        })
-
-        if (processResponse.ok) {
-          const processResult = await processResponse.json()
-          toast.success('Document processed successfully!')
-          console.log('Processing result:', processResult)
-        } else {
-          toast.error('Document uploaded but processing failed')
-        }
-      } else {
-        const errorText = await uploadResponse.text()
-        toast.error(`Upload failed: ${errorText}`)
-      }
+      // Store processed result in localStorage
+      localStorage.setItem(`document_${formData.document_id}`, JSON.stringify(result))
+      
+      // Also store in the uploadedDocuments array for easier access
+      const existingDocs = JSON.parse(localStorage.getItem('uploadedDocuments') || '[]')
+      const updatedDocs = [...existingDocs.filter((doc: any) => doc.id !== formData.document_id), {
+        id: formData.document_id,
+        name: formData.file?.name,
+        company_name: formData.company_name,
+        content: result.content,
+        text: result.text,
+        paragraphs: result.paragraphs,
+        uploaded_at: new Date().toISOString()
+      }]
+      localStorage.setItem('uploadedDocuments', JSON.stringify(updatedDocs))
+      
+      toast.success(`PDF处理完成！提取了 ${result.paragraphs.length} 个风险相关段落`)
+      console.log('PDF处理结果:', result)
     } catch (error) {
-      console.error('Real upload error:', error)
+      console.error('PDF处理错误:', error)
       throw error
     }
   }
 
-  const handleMockUpload = async () => {
-    // Simulate upload process
-    await new Promise(resolve => setTimeout(resolve, 2000))
-    
-    // Create comprehensive mock content for risk analysis
-    const mockContent = `
-    RISK FACTORS
-
-    Market Risk: Our financial results are subject to substantial market risk, including interest rate volatility, foreign exchange fluctuations, and equity market changes. Changes in market conditions could materially affect our trading revenues and investment banking fees.
-
-    Credit Risk: We face credit risk from our lending activities, including consumer loans, corporate loans, and securities financing transactions. Economic downturns or deterioration in specific sectors could lead to increased credit losses.
-
-    Operational Risk: We are exposed to operational risk, including the risk of loss resulting from inadequate or failed internal processes, people and systems, or from external events. This includes risks related to cybersecurity, data protection, and business continuity.
-
-    Liquidity Risk: We maintain significant liquidity buffers to meet our obligations. However, during times of market stress, our ability to access funding markets could be constrained, potentially affecting our operations.
-
-    Regulatory Risk: We operate in a highly regulated environment and are subject to extensive regulation by multiple regulatory authorities. Changes in regulations or regulatory actions could significantly impact our business operations and profitability.
-
-    Technology Risk: Our business relies heavily on technology systems and infrastructure. System failures, cybersecurity breaches, or inability to adapt to technological changes could adversely affect our operations.
-
-    Reputation Risk: Our reputation is critical to our business success. Negative publicity, whether related to our business practices, regulatory actions, or other factors, could harm our reputation and business prospects.
-    `
-    
-    // Mock successful upload and processing
-    const mockResult = {
-      document_id: formData.document_id,
-      company_name: formData.company_name,
-      file_name: formData.file?.name,
-      content: mockContent, // Add content field for risk analysis
-      text: mockContent,    // Add text field as backup
-      paragraphs: [
-        {
-          text: "Market Risk: Our financial results are subject to substantial market risk, including interest rate volatility, foreign exchange fluctuations, and equity market changes.",
-          page: 1,
-          metadata: { company: formData.company_name }
-        },
-        {
-          text: "Credit Risk: We face credit risk from our lending activities, including consumer loans, corporate loans, and securities financing transactions.",
-          page: 1,
-          metadata: { company: formData.company_name }
-        },
-        {
-          text: "Operational Risk: We are exposed to operational risk, including the risk of loss resulting from inadequate or failed internal processes, people and systems.",
-          page: 2,
-          metadata: { company: formData.company_name }
-        }
-      ],
-      processed: true
-    }
-    
-    // Store mock result in localStorage for other components
-    localStorage.setItem(`document_${formData.document_id}`, JSON.stringify(mockResult))
-    
-    // Also store in the uploadedDocuments array for easier access
-    const existingDocs = JSON.parse(localStorage.getItem('uploadedDocuments') || '[]')
-    const updatedDocs = [...existingDocs.filter((doc: any) => doc.id !== formData.document_id), {
-      id: formData.document_id,
-      name: formData.file?.name,
-      company_name: formData.company_name,
-      content: mockContent,
-      text: mockContent,
-      uploaded_at: new Date().toISOString()
-    }]
-    localStorage.setItem('uploadedDocuments', JSON.stringify(updatedDocs))
-    
-    toast.success('Document uploaded and processed successfully! (Demo Mode)')
-    console.log('Mock processing result:', mockResult)
-  }
 
   const resetForm = () => {
     setFormData({ file: null, document_id: '', company_name: '' })
@@ -214,12 +127,12 @@ const UploadDocument = () => {
               <Input
                 id="file"
                 type="file"
-                accept=".pdf,.doc,.docx,.txt"
+                accept=".pdf"
                 onChange={handleFileChange}
                 className="cursor-pointer"
               />
               <p className="text-xs text-muted-foreground">
-                Supported formats: PDF, DOC, DOCX, TXT
+                目前支持PDF格式，将自动提取风险相关内容
               </p>
             </div>
 
@@ -245,13 +158,42 @@ const UploadDocument = () => {
               />
             </div>
 
+            {(processing || loading) && (
+              <div className="space-y-4">
+                <div className="flex items-center space-x-2">
+                  {progress.stage === 'complete' ? (
+                    <CheckCircle2 className="h-4 w-4 text-green-500" />
+                  ) : (
+                    <AlertCircle className="h-4 w-4 text-blue-500 animate-pulse" />
+                  )}
+                  <span className="text-sm font-medium">
+                    {progress.stage === 'parsing' && 'PDF解析中...'}
+                    {progress.stage === 'chunking' && '文本分割中...'}
+                    {progress.stage === 'filtering' && '风险段落筛选中...'}
+                    {progress.stage === 'complete' && 'PDF处理完成!'}
+                  </span>
+                </div>
+                
+                <Progress value={progress.progress} className="w-full" />
+                
+                <div className="text-xs text-muted-foreground">
+                  {progress.stage === 'parsing' && `解析进度: ${progress.progress}%`}
+                  {progress.stage === 'chunking' && `分割进度: ${progress.progress}% ${progress.totalPages ? `(${progress.totalPages}页)` : ''}`}
+                  {progress.stage === 'filtering' && `筛选进度: ${progress.progress}% ${progress.chunksProcessed && progress.totalChunks ? `(${progress.chunksProcessed}/${progress.totalChunks} 块)` : ''}`}
+                  {progress.stage === 'complete' && '所有处理步骤已完成'}
+                </div>
+              </div>
+            )}
+
             <Button 
               type="submit" 
-              disabled={loading}
+              disabled={loading || processing}
               className="w-full flex items-center space-x-2"
             >
               <FileText className="h-4 w-4" />
-              <span>{loading ? 'Uploading...' : 'Upload Document'}</span>
+              <span>
+                {processing ? 'PDF处理中...' : loading ? '上传中...' : '上传文档'}
+              </span>
             </Button>
           </form>
         </CardContent>
