@@ -38,40 +38,55 @@ const UploadDocument = () => {
     setLoading(true)
     
     try {
+      // Step 1: Upload document
       const uploadFormData = new FormData()
       uploadFormData.append('file', formData.file)
       uploadFormData.append('document_id', formData.document_id)
       uploadFormData.append('company_name', formData.company_name)
       uploadFormData.append('user_id', user?.id || 'demo-user')
 
-      const response = await fetch('http://localhost:8000/upload', {
+      const uploadResponse = await fetch('http://localhost:8000/api/documents/upload', {
         method: 'POST',
         body: uploadFormData,
       })
 
-      if (response.ok) {
-        const result = await response.json()
+      if (uploadResponse.ok) {
+        const uploadResult = await uploadResponse.json()
         toast.success('Document uploaded successfully!')
+        
+        // Step 2: Process document with pdf_processor
+        const processResponse = await fetch(`http://localhost:8000/api/documents/${formData.document_id}/process`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            document_id: formData.document_id,
+            company_name: formData.company_name,
+            user_id: user?.id || 'demo-user'
+          }),
+        })
+
+        if (processResponse.ok) {
+          const processResult = await processResponse.json()
+          toast.success('Document processed successfully!')
+          console.log('Processing result:', processResult)
+        } else {
+          toast.error('Document uploaded but processing failed')
+        }
+        
         setFormData({ file: null, document_id: '', company_name: '' })
         
         // Reset file input
         const fileInput = document.getElementById('file') as HTMLInputElement
         if (fileInput) fileInput.value = ''
       } else {
-        toast.success('Demo: Document would be uploaded (API unavailable)')
-        setFormData({ file: null, document_id: '', company_name: '' })
-        
-        // Reset file input
-        const fileInput = document.getElementById('file') as HTMLInputElement
-        if (fileInput) fileInput.value = ''
+        const errorText = await uploadResponse.text()
+        toast.error(`Upload failed: ${errorText}`)
       }
     } catch (error) {
-      toast.success('Demo: Document would be uploaded (API unavailable)')
-      setFormData({ file: null, document_id: '', company_name: '' })
-      
-      // Reset file input
-      const fileInput = document.getElementById('file') as HTMLInputElement
-      if (fileInput) fileInput.value = ''
+      console.error('Upload error:', error)
+      toast.error('Upload failed: Network error')
     } finally {
       setLoading(false)
     }
