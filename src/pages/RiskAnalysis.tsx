@@ -52,26 +52,55 @@ const RiskAnalysis = () => {
   const [availableDocuments, setAvailableDocuments] = useState<any[]>([])
   const [selectedDocument, setSelectedDocument] = useState<string>('')
 
-  // 加载可用的文档列表
+  // Load available documents from localStorage
   useEffect(() => {
     const loadDocuments = () => {
       const documents = []
-      // 从localStorage获取已上传的文档
+      
+      // First, try to load from uploadedDocuments array
+      try {
+        const uploadedDocs = JSON.parse(localStorage.getItem('uploadedDocuments') || '[]')
+        uploadedDocs.forEach((doc: any) => {
+          documents.push({
+            id: doc.id,
+            company_name: doc.company_name || doc.name,
+            name: doc.name,
+            content: doc.content || doc.text || '',
+            uploaded_at: doc.uploaded_at
+          })
+        })
+      } catch (error) {
+        console.error('Error loading uploadedDocuments:', error)
+      }
+      
+      // Then, check individual document_ keys in localStorage
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i)
         if (key?.startsWith('document_')) {
           try {
             const docData = JSON.parse(localStorage.getItem(key) || '{}')
-            documents.push({
-              id: key.replace('document_', ''),
-              ...docData
-            })
+            const docId = key.replace('document_', '')
+            
+            // Only add if not already in documents array
+            if (!documents.find(doc => doc.id === docId)) {
+              documents.push({
+                id: docId,
+                company_name: docData.company_name || 'Unknown Company',
+                name: docData.file_name || `Document ${docId}`,
+                content: docData.content || docData.text || '',
+                uploaded_at: new Date().toISOString()
+              })
+            }
           } catch (error) {
             console.error('Error parsing document data:', error)
           }
         }
       }
+      
+      console.log('Loaded documents:', documents)
       setAvailableDocuments(documents)
+      
+      // Auto-select first document if none selected
       if (documents.length > 0 && !selectedDocument) {
         setSelectedDocument(documents[0].id)
       }
@@ -97,16 +126,30 @@ const RiskAnalysis = () => {
     setLoading(true)
     
     try {
-      // Get document data from localStorage
-      const documentData = JSON.parse(localStorage.getItem(`document_${selectedDocument}`) || '{}')
+      // Get document data - try both sources
+      let documentContent = ''
+      let documentName = ''
       
-      if (!documentData.content && !documentData.text) {
+      // First try from uploadedDocuments array
+      const selectedDoc = availableDocuments.find(doc => doc.id === selectedDocument)
+      if (selectedDoc && selectedDoc.content) {
+        documentContent = selectedDoc.content
+        documentName = selectedDoc.company_name || selectedDoc.name || 'Unknown Document'
+      } else {
+        // Fallback to individual localStorage entry
+        const documentData = JSON.parse(localStorage.getItem(`document_${selectedDocument}`) || '{}')
+        documentContent = documentData.content || documentData.text || ''
+        documentName = documentData.company_name || documentData.file_name || 'Unknown Document'
+      }
+      
+      if (!documentContent) {
         toast.error('No document content found for analysis')
         setLoading(false)
         return
       }
 
       console.log('Starting risk analysis for document:', selectedDocument)
+      console.log('Document content length:', documentContent.length)
       console.log('Selected prompts:', selectedPrompts)
       
       // Call Supabase edge function for risk analysis
@@ -114,8 +157,8 @@ const RiskAnalysis = () => {
         body: {
           document: {
             id: selectedDocument,
-            name: documentData.company_name || 'Unknown Document',
-            content: documentData.content || documentData.text || ''
+            name: documentName,
+            content: documentContent
           },
           prompts: selectedPrompts
         }
@@ -175,7 +218,7 @@ const RiskAnalysis = () => {
                       <SelectItem key={doc.id} value={doc.id}>
                         <div className="flex items-center space-x-2">
                           <FileText className="h-4 w-4" />
-                          <span>{doc.company_name || 'Unknown Company'} - {doc.document_id}</span>
+                          <span>{doc.company_name || 'Unknown Company'} - {doc.name || doc.id}</span>
                         </div>
                       </SelectItem>
                     ))}

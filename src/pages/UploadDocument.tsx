@@ -115,15 +115,46 @@ const UploadDocument = () => {
     // Simulate upload process
     await new Promise(resolve => setTimeout(resolve, 2000))
     
+    // Create comprehensive mock content for risk analysis
+    const mockContent = `
+    RISK FACTORS
+
+    Market Risk: Our financial results are subject to substantial market risk, including interest rate volatility, foreign exchange fluctuations, and equity market changes. Changes in market conditions could materially affect our trading revenues and investment banking fees.
+
+    Credit Risk: We face credit risk from our lending activities, including consumer loans, corporate loans, and securities financing transactions. Economic downturns or deterioration in specific sectors could lead to increased credit losses.
+
+    Operational Risk: We are exposed to operational risk, including the risk of loss resulting from inadequate or failed internal processes, people and systems, or from external events. This includes risks related to cybersecurity, data protection, and business continuity.
+
+    Liquidity Risk: We maintain significant liquidity buffers to meet our obligations. However, during times of market stress, our ability to access funding markets could be constrained, potentially affecting our operations.
+
+    Regulatory Risk: We operate in a highly regulated environment and are subject to extensive regulation by multiple regulatory authorities. Changes in regulations or regulatory actions could significantly impact our business operations and profitability.
+
+    Technology Risk: Our business relies heavily on technology systems and infrastructure. System failures, cybersecurity breaches, or inability to adapt to technological changes could adversely affect our operations.
+
+    Reputation Risk: Our reputation is critical to our business success. Negative publicity, whether related to our business practices, regulatory actions, or other factors, could harm our reputation and business prospects.
+    `
+    
     // Mock successful upload and processing
     const mockResult = {
       document_id: formData.document_id,
       company_name: formData.company_name,
       file_name: formData.file?.name,
+      content: mockContent, // Add content field for risk analysis
+      text: mockContent,    // Add text field as backup
       paragraphs: [
         {
-          text: "Sample risk paragraph extracted from document...",
+          text: "Market Risk: Our financial results are subject to substantial market risk, including interest rate volatility, foreign exchange fluctuations, and equity market changes.",
           page: 1,
+          metadata: { company: formData.company_name }
+        },
+        {
+          text: "Credit Risk: We face credit risk from our lending activities, including consumer loans, corporate loans, and securities financing transactions.",
+          page: 1,
+          metadata: { company: formData.company_name }
+        },
+        {
+          text: "Operational Risk: We are exposed to operational risk, including the risk of loss resulting from inadequate or failed internal processes, people and systems.",
+          page: 2,
           metadata: { company: formData.company_name }
         }
       ],
@@ -132,6 +163,18 @@ const UploadDocument = () => {
     
     // Store mock result in localStorage for other components
     localStorage.setItem(`document_${formData.document_id}`, JSON.stringify(mockResult))
+    
+    // Also store in the uploadedDocuments array for easier access
+    const existingDocs = JSON.parse(localStorage.getItem('uploadedDocuments') || '[]')
+    const updatedDocs = [...existingDocs.filter((doc: any) => doc.id !== formData.document_id), {
+      id: formData.document_id,
+      name: formData.file?.name,
+      company_name: formData.company_name,
+      content: mockContent,
+      text: mockContent,
+      uploaded_at: new Date().toISOString()
+    }]
+    localStorage.setItem('uploadedDocuments', JSON.stringify(updatedDocs))
     
     toast.success('Document uploaded and processed successfully! (Demo Mode)')
     console.log('Mock processing result:', mockResult)
