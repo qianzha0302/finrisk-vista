@@ -21,7 +21,12 @@ const Layout = ({ children }: LayoutProps) => {
   const location = useLocation()
 
   const handleLogout = async () => {
-    await supabase.auth.signOut()
+    if (supabase) {
+      await supabase.auth.signOut()
+    } else {
+      // Demo mode - redirect to landing page
+      window.location.href = '/'
+    }
   }
 
   const navigation = [
@@ -32,7 +37,10 @@ const Layout = ({ children }: LayoutProps) => {
     { name: 'Reports', href: '/reports', icon: FileText },
   ]
 
-  if (!user) {
+  // In demo mode (no Supabase), always show the layout
+  const showLayout = user || !supabase
+
+  if (!showLayout) {
     return <>{children}</>
   }
 
@@ -67,7 +75,7 @@ const Layout = ({ children }: LayoutProps) => {
             </div>
             <div className="flex items-center space-x-4">
               <span className="text-sm text-muted-foreground">
-                {user.email}
+                {user?.email || 'Demo User'}
               </span>
               <Button 
                 variant="outline" 

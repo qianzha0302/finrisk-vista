@@ -7,6 +7,12 @@ export const useAuth = () => {
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
+    // If Supabase isn't configured, set loading to false and no user
+    if (!supabase) {
+      setLoading(false)
+      return
+    }
+
     // Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUser(session?.user ?? null)

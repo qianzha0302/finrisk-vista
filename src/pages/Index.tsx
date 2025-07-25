@@ -17,6 +17,12 @@ const Index = () => {
   }, [user, loading, navigate])
 
   const handleLogin = async () => {
+    if (!supabase) {
+      // Demo mode - directly navigate to dashboard
+      navigate('/dashboard')
+      return
+    }
+    
     try {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
@@ -31,6 +37,12 @@ const Index = () => {
   }
 
   const handleSignUp = async () => {
+    if (!supabase) {
+      // Demo mode - directly navigate to dashboard
+      navigate('/dashboard')
+      return
+    }
+    
     try {
       const { error } = await supabase.auth.signInWithOAuth({
         provider: 'google',
