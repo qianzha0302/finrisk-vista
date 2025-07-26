@@ -1,17 +1,10 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.52.1';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
-
-// Import PDF.js for better text extraction
-import * as pdfjsLib from 'https://esm.sh/pdfjs-dist@4.0.379/build/pdf.min.mjs';
-
-// Configure PDF.js worker - use legacy build for compatibility
-pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.0.379/build/pdf.worker.min.js';
 
 // Financial keywords to filter for relevant sections
 const FINANCIAL_KEYWORDS = [
@@ -26,41 +19,55 @@ interface PageText {
   content: string;
 }
 
+// Simple text extraction using basic string methods (more reliable than PDF.js in edge functions)
 async function extractTextFromPDF(buffer: ArrayBuffer): Promise<{ pages: PageText[]; numPages: number }> {
   try {
     console.log('Processing PDF buffer of size:', buffer.byteLength);
     
-    // Initialize PDF.js
+    // Convert buffer to string and look for text patterns
     const uint8Array = new Uint8Array(buffer);
-    const pdf = await pdfjsLib.getDocument({ data: uint8Array }).promise;
-    const numPages = pdf.numPages;
+    let text = '';
     
-    console.log(`PDF loaded with ${numPages} pages`);
-    
-    const pages: PageText[] = [];
-    
-    // Process pages in batches to avoid timeout
-    const batchSize = 10;
-    for (let i = 1; i <= numPages; i += batchSize) {
-      const batchEnd = Math.min(i + batchSize - 1, numPages);
-      console.log(`Processing pages ${i}-${batchEnd}`);
-      
-      const batchPromises = [];
-      for (let pageNum = i; pageNum <= batchEnd; pageNum++) {
-        batchPromises.push(extractPageText(pdf, pageNum));
-      }
-      
-      const batchResults = await Promise.all(batchPromises);
-      pages.push(...batchResults);
-      
-      // Small delay to prevent overwhelming the system
-      if (batchEnd < numPages) {
-        await new Promise(resolve => setTimeout(resolve, 10));
+    // Simple extraction - look for readable text between PDF markers
+    for (let i = 0; i < uint8Array.length - 1; i++) {
+      const char = uint8Array[i];
+      // Only include printable ASCII characters and common punctuation
+      if ((char >= 32 && char <= 126) || char === 10 || char === 13) {
+        text += String.fromCharCode(char);
+      } else if (char === 0) {
+        text += ' '; // Replace null bytes with spaces
       }
     }
     
-    console.log(`Successfully extracted text from ${pages.length} pages`);
-    return { pages, numPages };
+    // Clean up the extracted text
+    text = text
+      .replace(/\0/g, ' ')           // Remove null bytes
+      .replace(/[\x00-\x1F\x7F-\x9F]/g, ' ') // Remove control characters
+      .replace(/\s+/g, ' ')          // Normalize whitespace
+      .trim();
+    
+    console.log('Extracted text length:', text.length);
+    
+    if (text.length < 100) {
+      throw new Error('Could not extract meaningful text from PDF');
+    }
+    
+    // Split text into chunks that represent "pages" (approximate)
+    const avgPageLength = 2000;
+    const pages: PageText[] = [];
+    
+    for (let i = 0; i < text.length; i += avgPageLength) {
+      const pageContent = text.slice(i, i + avgPageLength);
+      if (pageContent.trim().length > 50) {
+        pages.push({
+          pageNum: Math.floor(i / avgPageLength) + 1,
+          content: pageContent.trim()
+        });
+      }
+    }
+    
+    console.log(`Successfully extracted text from ${pages.length} page chunks`);
+    return { pages, numPages: pages.length };
     
   } catch (error) {
     console.error('Error extracting text from PDF:', error);
@@ -68,31 +75,6 @@ async function extractTextFromPDF(buffer: ArrayBuffer): Promise<{ pages: PageTex
   }
 }
 
-async function extractPageText(pdf: any, pageNum: number): Promise<PageText> {
-  try {
-    const page = await pdf.getPage(pageNum);
-    const textContent = await page.getTextContent();
-    
-    // Extract text items and combine them
-    const textItems = textContent.items.map((item: any) => item.str).join(' ');
-    
-    // Clean up the text
-    const cleanText = textItems
-      .replace(/\s+/g, ' ')
-      .trim();
-    
-    return {
-      pageNum,
-      content: cleanText
-    };
-  } catch (error) {
-    console.warn(`Failed to extract text from page ${pageNum}:`, error);
-    return {
-      pageNum,
-      content: ''
-    };
-  }
-}
 
 function filterRelevantPages(pages: PageText[]): PageText[] {
   console.log('Filtering pages for financial content...');
