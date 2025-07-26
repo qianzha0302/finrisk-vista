@@ -8,97 +8,89 @@ const corsHeaders = {
 };
 
 // Import PDF processing library compatible with Deno
-import { PDFDocument } from 'https://esm.sh/pdf-lib@1.17.1';
-
-const decoder = new TextDecoder();
+import { getDocument } from 'https://esm.sh/pdfjs-dist@4.8.69/legacy/build/pdf.mjs';
+import 'https://esm.sh/pdfjs-dist@4.8.69/legacy/build/pdf.worker.mjs';
 
 async function extractTextFromPDF(buffer: ArrayBuffer): Promise<{ text: string; numPages: number }> {
   try {
     console.log('Processing PDF buffer of size:', buffer.byteLength);
     
-    // Load PDF document
-    const pdfDoc = await PDFDocument.load(buffer);
-    const pages = pdfDoc.getPages();
-    const numPages = pages.length;
+    // Load PDF document using pdf.js
+    const typedArray = new Uint8Array(buffer);
+    const loadingTask = getDocument({ data: typedArray, disableFontFace: true });
+    const pdfDoc = await loadingTask.promise;
+    const numPages = pdfDoc.numPages;
     
     console.log(`PDF loaded with ${numPages} pages`);
     
     let fullText = '';
     
     // Extract text from each page
-    // Note: pdf-lib doesn't have direct text extraction, so we'll use a different approach
-    // We'll try to extract the raw content and parse it
-    
-    try {
-      // Try to extract text using a more manual approach
-      const pdfBytes = new Uint8Array(buffer);
-      const pdfString = decoder.decode(pdfBytes);
-      
-      // Look for text objects in PDF content
-      const textRegex = /\((.*?)\)/g;
-      const textMatches = pdfString.match(textRegex);
-      
-      if (textMatches) {
-        fullText = textMatches
-          .map(match => match.slice(1, -1)) // Remove parentheses
-          .filter(text => text.length > 2) // Filter out short fragments
-          .join(' ');
-      }
-      
-      // If no text found through regex, extract from stream objects
-      if (!fullText.trim()) {
-        const streamRegex = /stream\s*(.*?)\s*endstream/gs;
-        const streamMatches = pdfString.match(streamRegex);
+    for (let pageNum = 1; pageNum <= numPages; pageNum++) {
+      try {
+        const page = await pdfDoc.getPage(pageNum);
+        const textContent = await page.getTextContent();
         
-        if (streamMatches) {
-          for (const stream of streamMatches) {
-            const streamContent = stream.replace(/^stream\s*/, '').replace(/\s*endstream$/, '');
-            // Look for readable text in streams
-            const readableText = streamContent.match(/[a-zA-Z\s]{10,}/g);
-            if (readableText) {
-              fullText += readableText.join(' ') + ' ';
+        // Extract text items and reconstruct paragraphs
+        const textItems = textContent.items;
+        let pageText = '';
+        let currentLine = '';
+        let lastY = null;
+        let lastX = null;
+        
+        for (const item of textItems) {
+          if ('str' in item && 'transform' in item) {
+            const text = item.str;
+            const x = item.transform[4];
+            const y = item.transform[5];
+            
+            // Check if this is a new line based on Y coordinate
+            if (lastY !== null && Math.abs(y - lastY) > 5) {
+              // New line detected
+              if (currentLine.trim()) {
+                pageText += currentLine.trim() + '\n';
+                currentLine = '';
+              }
             }
+            // Check for significant horizontal gap (new column or section)
+            else if (lastX !== null && x - lastX > 20) {
+              currentLine += ' ';
+            }
+            
+            currentLine += text + ' ';
+            lastY = y;
+            lastX = x + (item.width || 0);
           }
         }
-      }
-      
-      // If still no text, try to extract from direct text objects
-      if (!fullText.trim()) {
-        const tjRegex = /\[(.*?)\]\s*TJ/g;
-        const tjMatches = pdfString.match(tjRegex);
         
-        if (tjMatches) {
-          fullText = tjMatches
-            .map(match => match.replace(/\[(.*?)\]\s*TJ/, '$1'))
-            .join(' ');
+        // Add remaining text
+        if (currentLine.trim()) {
+          pageText += currentLine.trim() + '\n';
         }
-      }
-      
-    } catch (textError) {
-      console.warn('Advanced text extraction failed, using fallback:', textError);
-      
-      // Fallback: extract any readable text from the PDF bytes
-      const readableTextRegex = /[A-Za-z]{3,}[\s\w.,!?;:'-]*/g;
-      const readableMatches = decoder.decode(pdfBytes).match(readableTextRegex);
-      
-      if (readableMatches) {
-        fullText = readableMatches
-          .filter(text => text.length > 5)
-          .join(' ');
+        
+        // Add page break marker
+        fullText += pageText + '\n\n';
+        
+        console.log(`Extracted text from page ${pageNum}: ${pageText.length} characters`);
+        
+      } catch (pageError) {
+        console.warn(`Failed to extract text from page ${pageNum}:`, pageError);
       }
     }
     
     // Clean up the extracted text
     fullText = fullText
-      .replace(/\s+/g, ' ') // Normalize whitespace
-      .replace(/[^\w\s.,!?;:'-]/g, ' ') // Remove special characters
+      .replace(/\n{3,}/g, '\n\n') // Normalize paragraph breaks
+      .replace(/[ \t]+/g, ' ') // Normalize spaces
+      .replace(/\n /g, '\n') // Remove spaces at line start
+      .replace(/ \n/g, '\n') // Remove spaces at line end
       .trim();
     
     if (!fullText) {
       throw new Error('No text could be extracted from the PDF');
     }
     
-    console.log(`Extracted ${fullText.length} characters of text`);
+    console.log(`Successfully extracted ${fullText.length} characters of text`);
     
     return { text: fullText, numPages };
     
