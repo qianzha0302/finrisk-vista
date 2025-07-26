@@ -441,36 +441,35 @@ serve(async (req) => {
           continue;
         }
 
-          const data = await response.json();
-          const rawOutput = data.choices[0].message.content;
-          
-          // Parse the JSON response
-          let analysis;
-          try {
-            // Clean the output and parse JSON
-            const cleanedOutput = rawOutput.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-            analysis = JSON.parse(cleanedOutput);
-          } catch (parseError) {
-            console.error(`Failed to parse JSON response: ${parseError}`);
-            // Fallback analysis structure
-            analysis = {
-              risk_type: promptTemplate.name,
-              severity: "Medium",
-              summary: "Analysis parsing failed - manual review required",
-              key_findings: ["Parse error occurred"],
-              recommendations: ["Manual review recommended"]
-            };
-          }
-
-          results.push({
-            paragraph: paragraph.substring(0, 200) + '...', // Truncate for display
-            analysis,
-            prompt: promptKey
-          });
-
-        } catch (error) {
-          console.error(`Error analyzing paragraph with prompt ${promptKey}:`, error);
+        const data = await response.json();
+        const rawOutput = data.choices[0].message.content;
+        
+        // Parse the JSON response
+        let analysis;
+        try {
+          // Clean the output and parse JSON
+          const cleanedOutput = rawOutput.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+          analysis = JSON.parse(cleanedOutput);
+        } catch (parseError) {
+          console.error(`Failed to parse JSON response: ${parseError}`);
+          // Fallback analysis structure
+          analysis = {
+            risk_type: promptTemplate.name,
+            severity: "Medium",
+            summary: "Analysis parsing failed - manual review required",
+            key_findings: ["Parse error occurred"],
+            recommendations: ["Manual review recommended"]
+          };
         }
+
+        results.push({
+          paragraph: paragraph.substring(0, 200) + '...', // Truncate for display
+          analysis,
+          prompt: promptKey
+        });
+
+      } catch (error) {
+        console.error(`Error analyzing paragraph with prompt ${promptKey}:`, error);
       }
     }
 
