@@ -11,22 +11,59 @@ from dotenv import load_dotenv
 import os
 import logging
 
-# 加载 .env 文件
+# Load .env file
 load_dotenv()
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-class InRiskGPTServices:
+class FinRiskGPTServices:
     def __init__(self, config: Dict[str, Any] = None):
-        """Initialize InRiskGPT services with configuration."""
-        self.config = {**RAGConfig.get_config(), **(config or {})}  # 合并默认和自定义配置
-        self.pdf_processor = PDFProcessorService(config=self.config)
-        self.risk_analyzer = RiskAnalyzerService()
-        self.rag_service = AdvancedRAGService(config=self.config)
-        self.graph_service = GraphService(config=self.config)
-        self.export_service = ExportService(config=self.config)
-        self.visualization_service = VisualizationService(config=self.config)
+        """Initialize FinRiskGPT services with configuration.
+        
+        Args:
+            config: Optional custom configuration dictionary to override defaults.
+        
+        Raises:
+            ValueError: If required configuration parameters are missing or services fail to initialize.
+        """
+        # Merge default and custom configuration
+        self.config = {**RAGConfig.get_config(), **(config or {})}
+        required_config = ['embedding_model', 'chunk_size', 'chunk_overlap', 'max_file_size_mb', 'template_path', 'storage_path', 'wkhtmltopdf_path']
+        missing_params = [param for param in required_config if param not in self.config]
+        if missing_params:
+            logger.error(f"Missing required configuration parameters: {missing_params}")
+            raise ValueError(f"Missing required configuration parameters: {missing_params}")
+
+        # Initialize services with configuration
+        try:
+            self.pdf_processor = PDFProcessorService(config=self.config)
+            self.risk_analyzer = RiskAnalyzerService(config=self.config)
+            self.rag_service = AdvancedRAGService(config=self.config)
+            self.graph_service = GraphService(config=self.config)
+            self.export_service = ExportService(config=self.config)
+            self.visualization_service = VisualizationService(config=self.config)
+        except Exception as e:
+            logger.error(f"Failed to initialize services: {str(e)}", exc_info=True)
+            raise ValueError(f"Service initialization failed: {str(e)}")
+
+        # Verify service initialization
+        self._validate_services()
+
+    def _validate_services(self):
+        """Validate that all services are properly initialized."""
+        services = {
+            "pdf_processor": self.pdf_processor,
+            "risk_analyzer": self.risk_analyzer,
+            "rag_service": self.rag_service,
+            "graph_service": self.graph_service,
+            "export_service": self.export_service,
+            "visualization_service": self.visualization_service
+        }
+        for service_name, service in services.items():
+            if service is None or not hasattr(service, '__call__'):
+                logger.warning(f"Service {service_name} is not properly initialized")
+                raise ValueError(f"Service {service_name} initialization failed")
 
     async def process_document(self, file_path: str, document_id: str, metadata: Dict[str, Any]) -> Dict[str, Any]:
         """Process a PDF document and return processed data.
@@ -40,11 +77,15 @@ class InRiskGPTServices:
             Dict[str, Any]: Processed document data.
 
         Raises:
+            ValueError: If file path or metadata is invalid.
             Exception: If processing fails.
         """
         if not file_path or not os.path.exists(file_path):
             logger.error(f"Invalid file path: {file_path}")
             raise ValueError("File path is invalid or does not exist")
+        if not isinstance(metadata, dict) or not all(key in metadata for key in ['user_id', 'document_type']):
+            logger.error("Invalid metadata provided")
+            raise ValueError("Metadata must include user_id and document_type")
         try:
             return await self.pdf_processor.process_pdf(file_path, document_id, metadata)
         except Exception as e:
@@ -63,6 +104,7 @@ class InRiskGPTServices:
             Dict[str, Any]: Analysis results.
 
         Raises:
+            ValueError: If paragraphs or prompts are invalid.
             Exception: If analysis fails.
         """
         if not paragraphs or not all(isinstance(p, dict) and "text" in p for p in paragraphs):
@@ -89,6 +131,7 @@ class InRiskGPTServices:
             Dict[str, Any]: Query response including answer and metadata.
 
         Raises:
+            ValueError: If required parameters are missing.
             Exception: If query or vectorstore building fails.
         """
         if not question or not document_id or not user_id:
@@ -112,6 +155,7 @@ class InRiskGPTServices:
             Dict[str, Any]: Graph data or configuration.
 
         Raises:
+            ValueError: If analysis_data or company_name is invalid.
             Exception: If graph generation fails.
         """
         if not analysis_data or not company_name:
@@ -135,6 +179,7 @@ class InRiskGPTServices:
             str: Path to the generated report file.
 
         Raises:
+            ValueError: If required parameters are missing.
             Exception: If report generation fails.
         """
         if not analysis_data or not export_type or not user_id:
@@ -158,6 +203,7 @@ class InRiskGPTServices:
             Dict[str, Any]: Comparison results.
 
         Raises:
+            ValueError: If paragraphs or prompts are invalid.
             Exception: If model comparison fails.
         """
         if not paragraphs or not all(isinstance(p, dict) and "text" in p for p in paragraphs):
@@ -183,6 +229,7 @@ class InRiskGPTServices:
             Any: Visualization data or object.
 
         Raises:
+            ValueError: If dfs_by_year or visualization_type is invalid.
             Exception: If visualization generation fails.
         """
         if not dfs_by_year or not visualization_type:
@@ -193,3 +240,23 @@ class InRiskGPTServices:
         except Exception as e:
             logger.error(f"Failed to generate visualization: {str(e)}", exc_info=True)
             raise
+
+    async def check_service_health(self) -> Dict[str, bool]:
+        """Check the health status of all services.
+        
+        Returns:
+            Dict[str, bool]: Status of each service (True if healthy, False otherwise).
+        """
+        health_status = {}
+        try:
+            health_status["pdf_processor"] = hasattr(self.pdf_processor, 'process_pdf')
+            health_status["risk_analyzer"] = hasattr(self.risk_analyzer, 'analyze_risks')
+            health_status["rag_service"] = hasattr(self.rag_service, 'intelligent_qa')
+            health_status["graph_service"] = hasattr(self.graph_service, 'generate_risk_graph')
+            health_status["export_service"] = hasattr(self.export_service, 'generate_pdf_report')
+            health_status["visualization_service"] = hasattr(self.visualization_service, 'generate_visualization')
+        except Exception as e:
+            logger.error(f"Health check failed: {str(e)}", exc_info=True)
+            for service in health_status:
+                health_status[service] = False
+        return health_status
