@@ -373,7 +373,12 @@ serve(async (req) => {
     const paragraphs = document.content
       .split('\n\n')
       .filter(p => p.trim().length > 100) // Only analyze substantial paragraphs
-      .slice(0, 5); // Limit to first 5 paragraphs for efficiency
+      .slice(0, 3); // Limit to first 3 paragraphs to reduce API calls
+
+    console.log(`Processing ${paragraphs.length} paragraphs with ${prompts.length} prompts`);
+
+    // Helper function to delay between API calls
+    const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
     for (const promptKey of prompts) {
       const promptTemplate = PROMPT_TEMPLATES[promptKey as keyof typeof PROMPT_TEMPLATES];
@@ -383,34 +388,58 @@ serve(async (req) => {
         continue;
       }
 
-      for (const paragraph of paragraphs) {
-        try {
-          const prompt = promptTemplate.template.replace('{paragraph}', paragraph);
-          
-          const response = await fetch('https://api.openai.com/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${openAIApiKey}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-              model: 'gpt-4o-mini',
-              messages: [
-                { 
-                  role: 'system', 
-                  content: 'You are a financial risk analysis expert. Always respond with valid JSON in the exact format requested.' 
-                },
-                { role: 'user', content: prompt }
-              ],
-              temperature: 0.1,
-              max_tokens: 1000,
-            }),
-          });
+      // Process only the first paragraph for now to avoid rate limits
+      const paragraph = paragraphs[0];
+      if (!paragraph) continue;
 
-          if (!response.ok) {
-            console.error(`OpenAI API error: ${response.status} ${response.statusText}`);
-            continue;
+      try {
+        console.log(`Analyzing with prompt: ${promptKey}`);
+        const prompt = promptTemplate.template.replace('{paragraph}', paragraph);
+        
+        // Add delay between requests to avoid rate limiting
+        await delay(1000);
+        
+        const response = await fetch('https://api.openai.com/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${openAIApiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: 'gpt-4o-mini',
+            messages: [
+              { 
+                role: 'system', 
+                content: 'You are a financial risk analysis expert. Always respond with valid JSON in the exact format requested.' 
+              },
+              { role: 'user', content: prompt }
+            ],
+            temperature: 0.1,
+            max_tokens: 1000,
+          }),
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error(`OpenAI API error: ${response.status} ${response.statusText} - ${errorText}`);
+          
+          // If rate limited, create a fallback result
+          if (response.status === 429) {
+            console.log('Rate limited, creating fallback result');
+            results.push({
+              paragraph: paragraph.substring(0, 200) + '...',
+              analysis: {
+                risk_type: promptTemplate.name,
+                severity: "Unknown - Rate Limited",
+                summary: "Analysis was rate limited by OpenAI API. Please try again in a few minutes.",
+                key_findings: ["API rate limit reached"],
+                recommendations: ["Wait a few minutes before retrying", "Consider upgrading OpenAI API plan for higher limits"]
+              },
+              prompt: promptKey
+            });
           }
+          continue;
+        }
 
           const data = await response.json();
           const rawOutput = data.choices[0].message.content;
