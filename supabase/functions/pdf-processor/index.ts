@@ -10,8 +10,8 @@ const corsHeaders = {
 // Import PDF.js for better text extraction
 import * as pdfjsLib from 'https://esm.sh/pdfjs-dist@4.0.379/build/pdf.min.mjs';
 
-// Configure PDF.js worker
-pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://esm.sh/pdfjs-dist@4.0.379/build/pdf.worker.min.mjs';
+// Configure PDF.js worker - use legacy build for compatibility
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.0.379/build/pdf.worker.min.js';
 
 // Financial keywords to filter for relevant sections
 const FINANCIAL_KEYWORDS = [
