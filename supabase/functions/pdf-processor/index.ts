@@ -266,23 +266,47 @@ serve(async (req) => {
       document_id: documentId,
       company_name: companyName,
       file_name: file.name,
-      content: fullText,
-      text: fullText,
-      paragraphs,
+      content: fullText.substring(0, 50000), // Limit content size to prevent JSON issues
+      text: fullText.substring(0, 50000), // Limit text size to prevent JSON issues
+      paragraphs: paragraphs.slice(0, 100), // Limit paragraphs to prevent response size issues
       processed: true
     };
 
-    // Initialize Supabase client
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const supabase = createClient(supabaseUrl, supabaseKey);
-
-    // Store processed data in Supabase storage or database if needed
-    // For now, just return the result
-
-    return new Response(JSON.stringify(result), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    console.log('Preparing response with result:', {
+      document_id: result.document_id,
+      company_name: result.company_name,
+      file_name: result.file_name,
+      contentLength: result.content.length,
+      textLength: result.text.length,
+      paragraphsCount: result.paragraphs.length,
+      processed: result.processed
     });
+
+    try {
+      const responseJson = JSON.stringify(result);
+      console.log('Response JSON created successfully, size:', responseJson.length);
+      
+      return new Response(responseJson, {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    } catch (jsonError) {
+      console.error('Failed to stringify result:', jsonError);
+      
+      // Return a simplified result if JSON.stringify fails
+      const simplifiedResult = {
+        document_id: documentId,
+        company_name: companyName,
+        file_name: file.name,
+        content: 'Content too large for response',
+        text: 'Text too large for response',
+        paragraphs: [],
+        processed: true
+      };
+      
+      return new Response(JSON.stringify(simplifiedResult), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
   } catch (error) {
     console.error('Error in pdf-processor function:', error);
