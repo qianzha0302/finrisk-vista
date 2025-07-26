@@ -1,60 +1,146 @@
 import { useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { useAuth } from '@/hooks/useAuth'
-import { supabase } from '@/lib/supabase'
-import { BarChart3, Shield, TrendingUp, FileText, Users, Zap } from 'lucide-react'
+import { BarChart3, Shield, TrendingUp, FileText, Users, Zap, Upload, Search } from 'lucide-react'
 
 const Index = () => {
   const { user, loading } = useAuth()
   const navigate = useNavigate()
 
-  useEffect(() => {
-    if (!loading && user) {
-      navigate('/dashboard')
-    }
-  }, [user, loading, navigate])
+  // If user is authenticated, show the dashboard content instead of landing page
+  if (user) {
+    const features = [
+      {
+        icon: Upload,
+        title: 'Document Upload',
+        description: 'Upload financial documents for comprehensive risk analysis',
+        href: '/upload'
+      },
+      {
+        icon: BarChart3,
+        title: 'Risk Analysis',
+        description: 'AI-powered risk assessment and categorization',
+        href: '/analysis'
+      },
+      {
+        icon: Search,
+        title: 'Smart Query',
+        description: 'Ask questions about your financial documents',
+        href: '/query'
+      },
+      {
+        icon: FileText,
+        title: 'Reports',
+        description: 'Generate detailed risk assessment reports',
+        href: '/reports'
+      }
+    ]
 
-  const handleLogin = async () => {
-    if (!supabase) {
-      // Demo mode - directly navigate to dashboard
-      navigate('/dashboard')
-      return
-    }
-    
-    try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: `${window.location.origin}/dashboard`
-        }
-      })
-      if (error) throw error
-    } catch (error) {
-      console.error('Login error:', error)
-    }
+    return (
+      <div className="space-y-8">
+        <div className="text-center space-y-4">
+          <h1 className="text-4xl font-bold text-foreground">
+            Financial Risk Analyzer
+          </h1>
+          <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
+            Advanced AI-powered platform for comprehensive financial document analysis and risk assessment
+          </p>
+          <p className="text-sm text-muted-foreground">
+            Welcome back, {user.email}
+          </p>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          {features.map((feature) => {
+            const Icon = feature.icon
+            return (
+              <Card key={feature.title} className="hover:shadow-lg transition-shadow">
+                <CardHeader>
+                  <div className="flex items-center space-x-2">
+                    <Icon className="h-6 w-6 text-primary" />
+                    <CardTitle className="text-lg">{feature.title}</CardTitle>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <CardDescription className="mb-4">
+                    {feature.description}
+                  </CardDescription>
+                  <Link to={feature.href}>
+                    <Button variant="outline" size="sm" className="w-full">
+                      Get Started
+                    </Button>
+                  </Link>
+                </CardContent>
+              </Card>
+            )
+          })}
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mt-12">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center space-x-2">
+                <TrendingUp className="h-5 w-5" />
+                <span>Key Benefits</span>
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ul className="space-y-3">
+                <li className="flex items-start space-x-2">
+                  <Shield className="h-4 w-4 text-green-500 mt-1" />
+                  <span className="text-sm">Comprehensive risk identification and assessment</span>
+                </li>
+                <li className="flex items-start space-x-2">
+                  <Shield className="h-4 w-4 text-green-500 mt-1" />
+                  <span className="text-sm">Advanced AI-powered document analysis</span>
+                </li>
+                <li className="flex items-start space-x-2">
+                  <Shield className="h-4 w-4 text-green-500 mt-1" />
+                  <span className="text-sm">Real-time insights and recommendations</span>
+                </li>
+                <li className="flex items-start space-x-2">
+                  <Shield className="h-4 w-4 text-green-500 mt-1" />
+                  <span className="text-sm">Secure document processing and storage</span>
+                </li>
+              </ul>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Quick Start</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <div className="flex items-center space-x-3">
+                  <div className="flex-shrink-0 w-8 h-8 bg-primary text-primary-foreground rounded-full flex items-center justify-center text-sm font-medium">
+                    1
+                  </div>
+                  <span className="text-sm">Upload your financial documents</span>
+                </div>
+                <div className="flex items-center space-x-3">
+                  <div className="flex-shrink-0 w-8 h-8 bg-primary text-primary-foreground rounded-full flex items-center justify-center text-sm font-medium">
+                    2
+                  </div>
+                  <span className="text-sm">Select analysis types</span>
+                </div>
+                <div className="flex items-center space-x-3">
+                  <div className="flex-shrink-0 w-8 h-8 bg-primary text-primary-foreground rounded-full flex items-center justify-center text-sm font-medium">
+                    3
+                  </div>
+                  <span className="text-sm">Review AI-generated risk insights</span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    )
   }
 
-  const handleSignUp = async () => {
-    if (!supabase) {
-      // Demo mode - directly navigate to dashboard
-      navigate('/dashboard')
-      return
-    }
-    
-    try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: `${window.location.origin}/dashboard`
-        }
-      })
-      if (error) throw error
-    } catch (error) {
-      console.error('Sign up error:', error)
-    }
-  }
+  // Landing page for non-authenticated users
 
   if (loading) {
     return (
@@ -78,12 +164,16 @@ const Index = () => {
               <span className="text-2xl font-bold text-foreground">FinRiskGPT</span>
             </div>
             <div className="flex items-center space-x-4">
-              <Button variant="outline" onClick={handleLogin}>
-                Login
-              </Button>
-              <Button onClick={handleSignUp}>
-                Sign Up
-              </Button>
+              <Link to="/auth">
+                <Button variant="outline">
+                  Login
+                </Button>
+              </Link>
+              <Link to="/auth">
+                <Button>
+                  Sign Up
+                </Button>
+              </Link>
             </div>
           </div>
         </div>
@@ -101,12 +191,16 @@ const Index = () => {
             Upload documents, get insights, and make data-driven decisions.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Button size="lg" onClick={handleSignUp} className="px-8">
-              Get Started Free
-            </Button>
-            <Button size="lg" variant="outline" onClick={handleLogin}>
-              View Demo
-            </Button>
+            <Link to="/auth">
+              <Button size="lg" className="px-8">
+                Get Started Free
+              </Button>
+            </Link>
+            <Link to="/auth">
+              <Button size="lg" variant="outline">
+                View Demo
+              </Button>
+            </Link>
           </div>
         </div>
       </section>
@@ -196,9 +290,11 @@ const Index = () => {
           <p className="text-lg text-muted-foreground mb-8">
             Join thousands of financial professionals using FinRiskGPT for smarter risk analysis
           </p>
-          <Button size="lg" onClick={handleSignUp} className="px-8">
-            Start Your Free Trial
-          </Button>
+          <Link to="/auth">
+            <Button size="lg" className="px-8">
+              Start Your Free Trial
+            </Button>
+          </Link>
         </div>
       </section>
 

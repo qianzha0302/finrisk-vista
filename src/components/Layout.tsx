@@ -2,14 +2,14 @@ import { ReactNode } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { useAuth } from '@/hooks/useAuth'
-import { supabase } from '@/lib/supabase'
 import { 
   BarChart3, 
   FileText, 
   Search, 
   Upload,
   Home,
-  LogOut
+  LogOut,
+  User
 } from 'lucide-react'
 
 interface LayoutProps {
@@ -17,17 +17,8 @@ interface LayoutProps {
 }
 
 const Layout = ({ children }: LayoutProps) => {
-  const { user } = useAuth()
+  const { user, signOut } = useAuth()
   const location = useLocation()
-
-  const handleLogout = async () => {
-    if (supabase) {
-      await supabase.auth.signOut()
-    } else {
-      // Demo mode - redirect to landing page
-      window.location.href = '/'
-    }
-  }
 
   const navigation = [
     { name: 'Dashboard', href: '/dashboard', icon: Home },
@@ -36,13 +27,6 @@ const Layout = ({ children }: LayoutProps) => {
     { name: 'Query', href: '/query', icon: Search },
     { name: 'Reports', href: '/reports', icon: FileText },
   ]
-
-  // In demo mode (no Supabase), always show the layout
-  const showLayout = user || !supabase
-
-  if (!showLayout) {
-    return <>{children}</>
-  }
 
   return (
     <div className="min-h-screen bg-background">
@@ -74,17 +58,18 @@ const Layout = ({ children }: LayoutProps) => {
               })}
             </div>
             <div className="flex items-center space-x-4">
-              <span className="text-sm text-muted-foreground">
-                {user?.email || 'Demo User'}
-              </span>
+              <div className="flex items-center space-x-2 text-sm text-muted-foreground">
+                <User className="h-4 w-4" />
+                <span>{user?.email}</span>
+              </div>
               <Button 
                 variant="outline" 
                 size="sm" 
-                onClick={handleLogout}
+                onClick={signOut}
                 className="flex items-center space-x-2"
               >
                 <LogOut size={16} />
-                <span>Logout</span>
+                <span>Sign Out</span>
               </Button>
             </div>
           </div>
