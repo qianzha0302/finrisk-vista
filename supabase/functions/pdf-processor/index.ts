@@ -7,154 +7,135 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Import PDF processing library compatible with Deno
-import { PDFDocument } from 'https://esm.sh/pdf-lib@1.17.1';
+// Import PDF.js for better text extraction
+import * as pdfjsLib from 'https://esm.sh/pdfjs-dist@4.0.379/build/pdf.min.mjs';
 
-const decoder = new TextDecoder();
+// Financial keywords to filter for relevant sections
+const FINANCIAL_KEYWORDS = [
+  "risk factors", "item 1a", "item 7", "management's discussion", 
+  "footnotes", "note", "md&a", "risk management", "credit risk",
+  "market risk", "operational risk", "liquidity risk", "capital",
+  "derivatives", "trading", "investment", "regulatory", "compliance"
+];
 
-async function extractTextFromPDF(buffer: ArrayBuffer): Promise<{ text: string; numPages: number }> {
+interface PageText {
+  pageNum: number;
+  content: string;
+}
+
+async function extractTextFromPDF(buffer: ArrayBuffer): Promise<{ pages: PageText[]; numPages: number }> {
   try {
     console.log('Processing PDF buffer of size:', buffer.byteLength);
     
-    // Load PDF document
-    const pdfDoc = await PDFDocument.load(buffer);
-    const pages = pdfDoc.getPages();
-    const numPages = pages.length;
+    // Initialize PDF.js
+    const uint8Array = new Uint8Array(buffer);
+    const pdf = await pdfjsLib.getDocument({ data: uint8Array }).promise;
+    const numPages = pdf.numPages;
     
     console.log(`PDF loaded with ${numPages} pages`);
     
-    let fullText = '';
+    const pages: PageText[] = [];
     
-    // Try to extract text using a simpler, more reliable approach
-    try {
-      const pdfBytes = new Uint8Array(buffer);
-      const pdfString = new TextDecoder('utf-8', { fatal: false }).decode(pdfBytes);
+    // Process pages in batches to avoid timeout
+    const batchSize = 10;
+    for (let i = 1; i <= numPages; i += batchSize) {
+      const batchEnd = Math.min(i + batchSize - 1, numPages);
+      console.log(`Processing pages ${i}-${batchEnd}`);
       
-      // Look for text content between 'BT' and 'ET' operators (text objects)
-      const textObjectRegex = /BT\s+([\s\S]*?)\s+ET/g;
-      const textObjects = [];
-      let match;
-      
-      while ((match = textObjectRegex.exec(pdfString)) !== null) {
-        const textObject = match[1];
-        
-        // Extract text from Tj operators (show text)
-        const tjRegex = /\(((?:[^()\\]|\\[\\()nrtbf]|\\[0-7]{1,3})*)\)\s*Tj/g;
-        let textMatch;
-        
-        while ((textMatch = tjRegex.exec(textObject)) !== null) {
-          let text = textMatch[1];
-          
-          // Decode escape sequences
-          text = text
-            .replace(/\\n/g, '\n')
-            .replace(/\\r/g, '\r')
-            .replace(/\\t/g, '\t')
-            .replace(/\\b/g, '\b')
-            .replace(/\\f/g, '\f')
-            .replace(/\\([\\()])/g, '$1')
-            .replace(/\\([0-7]{1,3})/g, (_, octal) => String.fromCharCode(parseInt(octal, 8)));
-          
-          // Only include text that looks like readable content
-          if (text.length > 2 && /[a-zA-Z0-9]/.test(text)) {
-            textObjects.push(text);
-          }
-        }
-        
-        // Also try TJ operators (show text with individual glyph positioning)
-        const tjArrayRegex = /\[((?:[^\[\]\\]|\\[\\()nrtbf]|\\[0-7]{1,3})*)\]\s*TJ/g;
-        
-        while ((textMatch = tjArrayRegex.exec(textObject)) !== null) {
-          const arrayContent = textMatch[1];
-          
-          // Extract strings from the array
-          const stringRegex = /\(((?:[^()\\]|\\[\\()nrtbf]|\\[0-7]{1,3})*)\)/g;
-          let stringMatch;
-          
-          while ((stringMatch = stringRegex.exec(arrayContent)) !== null) {
-            let text = stringMatch[1];
-            
-            text = text
-              .replace(/\\n/g, '\n')
-              .replace(/\\r/g, '\r')
-              .replace(/\\t/g, '\t')
-              .replace(/\\b/g, '\b')
-              .replace(/\\f/g, '\f')
-              .replace(/\\([\\()])/g, '$1')
-              .replace(/\\([0-7]{1,3})/g, (_, octal) => String.fromCharCode(parseInt(octal, 8)));
-            
-            if (text.length > 2 && /[a-zA-Z0-9]/.test(text)) {
-              textObjects.push(text);
-            }
-          }
-        }
+      const batchPromises = [];
+      for (let pageNum = i; pageNum <= batchEnd; pageNum++) {
+        batchPromises.push(extractPageText(pdf, pageNum));
       }
       
-      if (textObjects.length > 0) {
-        // Join text objects with appropriate spacing
-        fullText = textObjects.join(' ');
-      }
+      const batchResults = await Promise.all(batchPromises);
+      pages.push(...batchResults);
       
-      // If that didn't work, try a more comprehensive approach
-      if (!fullText.trim() || fullText.length < 100) {
-        console.log('First extraction method failed, trying alternative approach');
-        
-        // Look for any parentheses-enclosed strings that might be text
-        const allTextRegex = /\(([^()]*(?:\\.[^()]*)*)\)/g;
-        const allTexts = [];
-        
-        while ((match = allTextRegex.exec(pdfString)) !== null) {
-          let text = match[1];
-          
-          // Decode basic escape sequences
-          text = text
-            .replace(/\\n/g, ' ')
-            .replace(/\\r/g, ' ')
-            .replace(/\\t/g, ' ')
-            .replace(/\\([\\()])/g, '$1');
-          
-          // Filter for likely text content
-          if (text.length > 1 && /[a-zA-Z]/.test(text)) {
-            allTexts.push(text);
-          }
-        }
-        
-        if (allTexts.length > 0) {
-          fullText = allTexts.join(' ');
-        }
+      // Small delay to prevent overwhelming the system
+      if (batchEnd < numPages) {
+        await new Promise(resolve => setTimeout(resolve, 10));
       }
-      
-    } catch (extractError) {
-      console.error('Text extraction error:', extractError);
-      throw new Error('Failed to extract readable text from PDF');
     }
     
-    // Clean up the extracted text
-    if (fullText) {
-      fullText = fullText
-        // Remove control characters and non-printable characters except common whitespace
-        .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/g, ' ')
-        // Keep only ASCII printable characters and common Unicode
-        .replace(/[^\x20-\x7E\u00A0-\u024F\u1E00-\u1EFF\s]/g, ' ')
-        // Normalize whitespace
-        .replace(/\s+/g, ' ')
-        // Try to reconstruct sentences
-        .replace(/([a-z])\s+([A-Z])/g, '$1. $2')
-        .trim();
-    }
-    
-    if (!fullText || fullText.length < 50) {
-      throw new Error('No meaningful text could be extracted from the PDF');
-    }
-    
-    console.log(`Successfully extracted ${fullText.length} characters of readable text`);
-    
-    return { text: fullText, numPages };
+    console.log(`Successfully extracted text from ${pages.length} pages`);
+    return { pages, numPages };
     
   } catch (error) {
     console.error('Error extracting text from PDF:', error);
     throw new Error(`PDF processing failed: ${error.message}`);
   }
+}
+
+async function extractPageText(pdf: any, pageNum: number): Promise<PageText> {
+  try {
+    const page = await pdf.getPage(pageNum);
+    const textContent = await page.getTextContent();
+    
+    // Extract text items and combine them
+    const textItems = textContent.items.map((item: any) => item.str).join(' ');
+    
+    // Clean up the text
+    const cleanText = textItems
+      .replace(/\s+/g, ' ')
+      .trim();
+    
+    return {
+      pageNum,
+      content: cleanText
+    };
+  } catch (error) {
+    console.warn(`Failed to extract text from page ${pageNum}:`, error);
+    return {
+      pageNum,
+      content: ''
+    };
+  }
+}
+
+function filterRelevantPages(pages: PageText[]): PageText[] {
+  console.log('Filtering pages for financial content...');
+  
+  const relevantPages = pages.filter(page => {
+    const content = page.content.toLowerCase();
+    return FINANCIAL_KEYWORDS.some(keyword => content.includes(keyword.toLowerCase()));
+  });
+  
+  console.log(`Found ${relevantPages.length} relevant pages out of ${pages.length} total pages`);
+  return relevantPages;
+}
+
+function chunkText(text: string, chunkSize: number = 800, overlap: number = 150): string[] {
+  const chunks: string[] = [];
+  
+  // First, split by sentences for better coherence
+  const sentences = text.split(/[.!?]+/).filter(s => s.trim().length > 0);
+  
+  let currentChunk = '';
+  let currentSize = 0;
+  
+  for (const sentence of sentences) {
+    const sentenceLength = sentence.trim().length;
+    
+    // If adding this sentence would exceed chunk size, finalize current chunk
+    if (currentSize + sentenceLength > chunkSize && currentChunk.length > 0) {
+      chunks.push(currentChunk.trim());
+      
+      // Start new chunk with overlap
+      const words = currentChunk.split(' ');
+      const overlapWords = words.slice(-Math.floor(overlap / 10)); // Approximate word overlap
+      currentChunk = overlapWords.join(' ') + ' ' + sentence.trim();
+      currentSize = currentChunk.length;
+    } else {
+      currentChunk += (currentChunk ? ' ' : '') + sentence.trim();
+      currentSize = currentChunk.length;
+    }
+  }
+  
+  // Add the last chunk if it has content
+  if (currentChunk.trim().length > 50) {
+    chunks.push(currentChunk.trim());
+  }
+  
+  return chunks.filter(chunk => chunk.length > 50); // Only return meaningful chunks
 }
 
 interface PDFChunk {
@@ -229,55 +210,54 @@ serve(async (req) => {
       throw new Error(`Failed to read file: ${bufferError.message}`);
     }
     
-    // Extract text using our custom function
+    // Extract text using PDF.js
     console.log('Starting text extraction...');
-    const { text: fullText, numPages } = await extractTextFromPDF(arrayBuffer);
+    const { pages, numPages } = await extractTextFromPDF(arrayBuffer);
     
     console.log(`PDF processed with ${numPages} pages`);
-
-    // Chunk text - process entire document, not just risk-related content
-    const chunkText = (text: string, chunkSize: number = 1000, overlap: number = 200): string[] => {
-      const chunks: string[] = [];
-      let start = 0;
-
-      while (start < text.length) {
-        const end = Math.min(start + chunkSize, text.length);
-        const chunk = text.slice(start, end);
-        
-        // Only add chunks that have meaningful content
-        if (chunk.trim().length > 50) {
-          chunks.push(chunk.trim());
-        }
-        
-        start += chunkSize - overlap;
-      }
-
-      return chunks;
-    };
-
-    const chunks = chunkText(fullText);
-    const paragraphs: PDFChunk[] = [];
-
-    // Convert all chunks to paragraphs (not just risk-related ones)
-    for (let i = 0; i < chunks.length; i++) {
-      const chunk = chunks[i];
-      
-      paragraphs.push({
-        text: chunk,
-        page: Math.floor((i / chunks.length) * numPages) + 1,
-        metadata: { company: companyName }
-      });
+    
+    // Filter for relevant financial sections (like your Streamlit approach)
+    const relevantPages = filterRelevantPages(pages);
+    
+    if (relevantPages.length === 0) {
+      console.log('No relevant financial sections found, processing all pages');
+      // Fallback to processing all pages if no financial keywords found
+      relevantPages.push(...pages.slice(0, 50)); // Limit to first 50 pages to avoid timeout
     }
 
-    console.log(`Created ${paragraphs.length} text chunks from ${numPages} pages`);
+    const paragraphs: PDFChunk[] = [];
+    let allChunks: string[] = [];
 
+    // Process each relevant page and chunk its content
+    for (const page of relevantPages) {
+      if (page.content.trim().length > 100) { // Only process pages with substantial content
+        const pageChunks = chunkText(page.content);
+        
+        // Add chunks with page metadata
+        for (const chunk of pageChunks) {
+          paragraphs.push({
+            text: chunk,
+            page: page.pageNum,
+            metadata: { company: companyName }
+          });
+        }
+        
+        allChunks.push(...pageChunks);
+      }
+    }
+
+    console.log(`Created ${paragraphs.length} useful paragraphs from ${relevantPages.length} relevant pages`);
+
+    // Combine all relevant text for content field
+    const combinedText = allChunks.join('\n\n');
+    
     const result: ProcessingResult = {
       document_id: documentId,
       company_name: companyName,
       file_name: file.name,
-      content: fullText.substring(0, 50000), // Limit content size to prevent JSON issues
-      text: fullText.substring(0, 50000), // Limit text size to prevent JSON issues
-      paragraphs: paragraphs.slice(0, 100), // Limit paragraphs to prevent response size issues
+      content: combinedText.substring(0, 50000), // Limit content size to prevent JSON issues
+      text: combinedText.substring(0, 50000), // Limit text size to prevent JSON issues
+      paragraphs: paragraphs.slice(0, 150), // Increased limit since we're filtering for relevant content
       processed: true
     };
 
