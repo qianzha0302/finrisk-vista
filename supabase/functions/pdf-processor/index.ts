@@ -150,13 +150,6 @@ serve(async (req) => {
 
     console.log(`Processing PDF: ${file.name} for ${companyName}`);
 
-    // Risk keywords similar to Python version
-    const riskKeywords = [
-      'risk', 'uncertainty', 'threat', 'challenge', 'exposure',
-      'volatility', 'fluctuation', 'adverse', 'decline', 'loss',
-      'default', 'credit', 'market', 'operational', 'liquidity'
-    ];
-
     // Convert file to array buffer
     const arrayBuffer = await file.arrayBuffer();
     
@@ -165,14 +158,20 @@ serve(async (req) => {
     
     console.log(`PDF processed with ${numPages} pages`);
 
-    // Chunk text similar to Python version
+    // Chunk text - process entire document, not just risk-related content
     const chunkText = (text: string, chunkSize: number = 1000, overlap: number = 200): string[] => {
       const chunks: string[] = [];
       let start = 0;
 
       while (start < text.length) {
         const end = Math.min(start + chunkSize, text.length);
-        chunks.push(text.slice(start, end));
+        const chunk = text.slice(start, end);
+        
+        // Only add chunks that have meaningful content
+        if (chunk.trim().length > 50) {
+          chunks.push(chunk.trim());
+        }
+        
         start += chunkSize - overlap;
       }
 
@@ -182,25 +181,18 @@ serve(async (req) => {
     const chunks = chunkText(fullText);
     const paragraphs: PDFChunk[] = [];
 
-    // Filter chunks for risk-related content
+    // Convert all chunks to paragraphs (not just risk-related ones)
     for (let i = 0; i < chunks.length; i++) {
       const chunk = chunks[i];
       
-      // Check if chunk contains risk-related keywords
-      const hasRiskKeyword = riskKeywords.some(keyword => 
-        chunk.toLowerCase().includes(keyword.toLowerCase())
-      );
-
-      if (hasRiskKeyword && chunk.trim().length > 50) {
-        paragraphs.push({
-          text: chunk.trim(),
-          page: Math.floor((i / chunks.length) * numPages) + 1,
-          metadata: { company: companyName }
-        });
-      }
+      paragraphs.push({
+        text: chunk,
+        page: Math.floor((i / chunks.length) * numPages) + 1,
+        metadata: { company: companyName }
+      });
     }
 
-    console.log(`Found ${paragraphs.length} risk-related paragraphs`);
+    console.log(`Created ${paragraphs.length} text chunks from ${numPages} pages`);
 
     const result: ProcessingResult = {
       document_id: documentId,
