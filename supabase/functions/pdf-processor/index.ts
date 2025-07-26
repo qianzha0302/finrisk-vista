@@ -25,127 +25,129 @@ async function extractTextFromPDF(buffer: ArrayBuffer): Promise<{ text: string; 
     
     let fullText = '';
     
-    // Improved text extraction approach
+    // Try to extract text using a simpler, more reliable approach
     try {
       const pdfBytes = new Uint8Array(buffer);
-      const pdfString = decoder.decode(pdfBytes);
+      const pdfString = new TextDecoder('utf-8', { fatal: false }).decode(pdfBytes);
       
-      // Extract text using multiple strategies for better paragraph detection
-      
-      // Strategy 1: Extract from parentheses (most common in PDFs)
-      const textRegex = /\(((?:[^()\\]|\\.)*)\)/g;
-      const textMatches = [];
+      // Look for text content between 'BT' and 'ET' operators (text objects)
+      const textObjectRegex = /BT\s+([\s\S]*?)\s+ET/g;
+      const textObjects = [];
       let match;
       
-      while ((match = textRegex.exec(pdfString)) !== null) {
-        const text = match[1]
-          .replace(/\\([()\\])/g, '$1') // Unescape special characters
-          .replace(/\\n/g, '\n') // Handle explicit newlines
-          .replace(/\\r/g, '\r') // Handle carriage returns
-          .replace(/\\t/g, '\t'); // Handle tabs
+      while ((match = textObjectRegex.exec(pdfString)) !== null) {
+        const textObject = match[1];
         
-        if (text.length > 1) {
-          textMatches.push(text);
-        }
-      }
-      
-      if (textMatches.length > 0) {
-        // Reconstruct paragraphs by analyzing text patterns
-        let reconstructedText = '';
-        let currentParagraph = '';
+        // Extract text from Tj operators (show text)
+        const tjRegex = /\(((?:[^()\\]|\\[\\()nrtbf]|\\[0-7]{1,3})*)\)\s*Tj/g;
+        let textMatch;
         
-        for (let i = 0; i < textMatches.length; i++) {
-          const text = textMatches[i].trim();
+        while ((textMatch = tjRegex.exec(textObject)) !== null) {
+          let text = textMatch[1];
           
-          if (!text) continue;
+          // Decode escape sequences
+          text = text
+            .replace(/\\n/g, '\n')
+            .replace(/\\r/g, '\r')
+            .replace(/\\t/g, '\t')
+            .replace(/\\b/g, '\b')
+            .replace(/\\f/g, '\f')
+            .replace(/\\([\\()])/g, '$1')
+            .replace(/\\([0-7]{1,3})/g, (_, octal) => String.fromCharCode(parseInt(octal, 8)));
           
-          // Check if this looks like a continuation of the previous text
-          const nextText = textMatches[i + 1]?.trim() || '';
-          const isEndOfSentence = /[.!?]\s*$/.test(text);
-          const isNewParagraph = /^[A-Z]/.test(nextText) && isEndOfSentence;
-          const isListItem = /^[\d•\-\*]\s/.test(text);
-          
-          currentParagraph += text;
-          
-          // Add space if the current text doesn't end with punctuation and next text exists
-          if (nextText && !text.endsWith(' ') && !/[.!?;:,]\s*$/.test(text)) {
-            currentParagraph += ' ';
-          }
-          
-          // Start new paragraph if:
-          // 1. Current text ends with sentence punctuation and next starts with capital
-          // 2. Current text is a list item
-          // 3. Significant content change detected
-          if (isNewParagraph || isListItem || i === textMatches.length - 1) {
-            if (currentParagraph.trim()) {
-              reconstructedText += currentParagraph.trim() + '\n\n';
-              currentParagraph = '';
-            }
+          // Only include text that looks like readable content
+          if (text.length > 2 && /[a-zA-Z0-9]/.test(text)) {
+            textObjects.push(text);
           }
         }
         
-        fullText = reconstructedText;
-      }
-      
-      // Strategy 2: Fallback to TJ arrays if previous method failed
-      if (!fullText.trim()) {
-        const tjRegex = /\[((?:[^\[\]\\]|\\.)*)\]\s*TJ/g;
-        const tjMatches = [];
+        // Also try TJ operators (show text with individual glyph positioning)
+        const tjArrayRegex = /\[((?:[^\[\]\\]|\\[\\()nrtbf]|\\[0-7]{1,3})*)\]\s*TJ/g;
         
-        while ((match = tjRegex.exec(pdfString)) !== null) {
-          const content = match[1];
-          // Parse array content
-          const textParts = content.match(/\(((?:[^()\\]|\\.)*)\)/g);
-          if (textParts) {
-            const text = textParts.map(part => 
-              part.slice(1, -1).replace(/\\([()\\])/g, '$1')
-            ).join('');
+        while ((textMatch = tjArrayRegex.exec(textObject)) !== null) {
+          const arrayContent = textMatch[1];
+          
+          // Extract strings from the array
+          const stringRegex = /\(((?:[^()\\]|\\[\\()nrtbf]|\\[0-7]{1,3})*)\)/g;
+          let stringMatch;
+          
+          while ((stringMatch = stringRegex.exec(arrayContent)) !== null) {
+            let text = stringMatch[1];
             
-            if (text.trim().length > 2) {
-              tjMatches.push(text);
+            text = text
+              .replace(/\\n/g, '\n')
+              .replace(/\\r/g, '\r')
+              .replace(/\\t/g, '\t')
+              .replace(/\\b/g, '\b')
+              .replace(/\\f/g, '\f')
+              .replace(/\\([\\()])/g, '$1')
+              .replace(/\\([0-7]{1,3})/g, (_, octal) => String.fromCharCode(parseInt(octal, 8)));
+            
+            if (text.length > 2 && /[a-zA-Z0-9]/.test(text)) {
+              textObjects.push(text);
             }
           }
         }
+      }
+      
+      if (textObjects.length > 0) {
+        // Join text objects with appropriate spacing
+        fullText = textObjects.join(' ');
+      }
+      
+      // If that didn't work, try a more comprehensive approach
+      if (!fullText.trim() || fullText.length < 100) {
+        console.log('First extraction method failed, trying alternative approach');
         
-        if (tjMatches.length > 0) {
-          fullText = tjMatches.join(' ');
+        // Look for any parentheses-enclosed strings that might be text
+        const allTextRegex = /\(([^()]*(?:\\.[^()]*)*)\)/g;
+        const allTexts = [];
+        
+        while ((match = allTextRegex.exec(pdfString)) !== null) {
+          let text = match[1];
+          
+          // Decode basic escape sequences
+          text = text
+            .replace(/\\n/g, ' ')
+            .replace(/\\r/g, ' ')
+            .replace(/\\t/g, ' ')
+            .replace(/\\([\\()])/g, '$1');
+          
+          // Filter for likely text content
+          if (text.length > 1 && /[a-zA-Z]/.test(text)) {
+            allTexts.push(text);
+          }
+        }
+        
+        if (allTexts.length > 0) {
+          fullText = allTexts.join(' ');
         }
       }
       
-    } catch (textError) {
-      console.warn('Text extraction failed:', textError);
-      
-      // Ultimate fallback: extract readable sequences
-      const pdfBytes = new Uint8Array(buffer);
-      const readableTextRegex = /[A-Za-z][A-Za-z\s.,!?;:'"()-]{10,}/g;
-      const readableMatches = decoder.decode(pdfBytes).match(readableTextRegex);
-      
-      if (readableMatches) {
-        fullText = readableMatches
-          .filter(text => text.length > 10)
-          .join(' ');
-      }
+    } catch (extractError) {
+      console.error('Text extraction error:', extractError);
+      throw new Error('Failed to extract readable text from PDF');
     }
     
-    // Final text cleanup and paragraph formatting
-    fullText = fullText
-      // Remove all control characters and non-printable characters
-      .replace(/[\x00-\x1F\x7F-\x9F]/g, ' ')
-      // Remove any remaining binary sequences
-      .replace(/[^\x20-\x7E\s]/g, ' ')
-      // Normalize whitespace
-      .replace(/\s+/g, ' ')
-      // Add paragraph breaks after sentences
-      .replace(/([.!?])\s+([A-Z])/g, '$1\n\n$2')
-      // Normalize paragraph breaks
-      .replace(/\n{3,}/g, '\n\n')
-      .trim();
-    
-    if (!fullText) {
-      throw new Error('No text could be extracted from the PDF');
+    // Clean up the extracted text
+    if (fullText) {
+      fullText = fullText
+        // Remove control characters and non-printable characters except common whitespace
+        .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/g, ' ')
+        // Keep only ASCII printable characters and common Unicode
+        .replace(/[^\x20-\x7E\u00A0-\u024F\u1E00-\u1EFF\s]/g, ' ')
+        // Normalize whitespace
+        .replace(/\s+/g, ' ')
+        // Try to reconstruct sentences
+        .replace(/([a-z])\s+([A-Z])/g, '$1. $2')
+        .trim();
     }
     
-    console.log(`Successfully extracted ${fullText.length} characters of text`);
+    if (!fullText || fullText.length < 50) {
+      throw new Error('No meaningful text could be extracted from the PDF');
+    }
+    
+    console.log(`Successfully extracted ${fullText.length} characters of readable text`);
     
     return { text: fullText, numPages };
     
