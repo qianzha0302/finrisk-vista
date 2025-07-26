@@ -10,7 +10,7 @@ const corsHeaders = {
 
 const PROMPT_TEMPLATES = {
   'risk_classifier': {
-    name: 'Risk Classification',
+    name: 'Enhanced Risk Classification',
     template: `You are a senior financial risk analyst with CFA and FRM certifications. 
 
 Analyze the following 10-K paragraph using the Enhanced Risk Classification Framework 2.0:
@@ -37,40 +37,51 @@ Analyze the following 10-K paragraph using the Enhanced Risk Classification Fram
    2 = Long-term (18+ months)
    1 = Uncertain timeline
 
-**Output Format:**
+**Few-Shot Examples:**
+
+Example 1:
+Paragraph: The Company's operations and performance depend significantly on global and regional economic conditions and adverse economic conditions can materially adversely affect the Company's business, results of operations and financial condition.
+
+Output:
 {
   "risk_classification": {
-    "primary_risk_type": "string",
-    "secondary_risk_types": ["string"],
-    "severity_score": 1-10,
-    "velocity_score": 1-5,
-    "composite_risk_score": "calculated value"
+    "primary_risk_type": "Market Risk",
+    "secondary_risk_types": ["Geopolitical Risk"],
+    "severity_score": 7,
+    "velocity_score": 3,
+    "composite_risk_score": 10.5
   },
   "risk_details": {
-    "risk_driver": "string",
-    "potential_impact": "string", 
-    "affected_stakeholders": ["string"],
-    "key_excerpt": "most relevant 50-100 words"
+    "risk_driver": "Adverse macroeconomic conditions",
+    "potential_impact": "Reduced demand for products and services",
+    "affected_stakeholders": ["Consumers", "Investors", "Suppliers"],
+    "key_excerpt": "Adverse macroeconomic conditions can materially adversely affect the Company's business"
   },
   "mitigation_analysis": {
-    "existing_controls": ["string"],
-    "control_effectiveness": 1-5,
-    "recommended_actions": ["string"],
-    "urgency_level": "immediate/high/medium/low"
+    "existing_controls": ["Diversified international operations"],
+    "control_effectiveness": 3,
+    "recommended_actions": ["Enhance economic forecasting and hedging strategies"],
+    "urgency_level": "medium"
+  },
+  "regulatory_compliance": {
+    "applicable_regulations": ["SEC Item 303"],
+    "compliance_status": "unclear",
+    "regulatory_references": ["MD&A forward-looking statements"]
   },
   "confidence_assessment": {
-    "overall_confidence": 1-5,
-    "reasoning": ["basis for confidence rating"],
-    "data_quality": "high/medium/low"
+    "overall_confidence": 4,
+    "reasoning": ["Based on clear economic indicators mentioned"],
+    "data_quality": "high",
+    "ambiguity_flags": ["Uncertain timeline for economic changes"]
   }
 }
 
 Paragraph: {paragraph}
 
-Respond ONLY with the JSON object.`
+Respond ONLY with the JSON object. Ensure all numeric fields are properly typed.`
   },
   'compliance_audit_v2': {
-    name: 'Compliance Audit',
+    name: 'Enhanced Compliance Audit',
     template: `You are a compliance expert with expertise in SEC, FINRA, SOX, and Basel regulations.
 
 Conduct comprehensive compliance review of the 10-K section:
@@ -80,37 +91,59 @@ Conduct comprehensive compliance review of the 10-K section:
    - Item 105 (Risk Factors) - completeness and materiality
    - Item 303 (MD&A) - forward-looking statements compliance
    - Item 402 (Executive Compensation) - proxy disclosure rules
+   - Regulation FD - selective disclosure prevention
 
 2. SOX Compliance:
    - Section 302 - CEO/CFO certifications
    - Section 404 - internal controls assessment
    - Section 906 - criminal penalties for false certifications
 
-**Output Format:**
+**Few-Shot Examples:**
+
+Example 1:
+Paragraph: While the Company relies on its partners to adhere to its supplier code of conduct, material violations of the supplier code of conduct could occur.
+
+Output:
 {
   "compliance_assessment": {
-    "overall_status": "compliant/non-compliant/requires_review",
-    "compliance_score": 1-10,
-    "critical_issues_count": "integer"
+    "overall_status": "requires_review",
+    "compliance_score": 6,
+    "critical_issues_count": 1
   },
   "regulatory_findings": [
     {
-      "regulation": "string",
-      "section": "string", 
-      "finding_type": "violation/deficiency/best_practice",
-      "severity": 1-5,
-      "description": "string",
-      "supporting_text": "relevant excerpt"
+      "regulation": "SEC",
+      "section": "Item 105",
+      "finding_type": "deficiency",
+      "severity": 3,
+      "description": "Potential undisclosed violations in supplier code of conduct",
+      "supporting_text": "material violations of the supplier code of conduct could occur",
+      "remediation_required": true,
+      "timeline_for_correction": "3-6 months"
     }
   ],
   "disclosure_gaps": [
     {
-      "required_disclosure": "string",
-      "current_status": "missing/inadequate/unclear",
-      "regulatory_basis": "specific rule/section",
-      "recommended_action": "string"
+      "required_disclosure": "Risk factors related to supplier compliance",
+      "current_status": "inadequate",
+      "regulatory_basis": "SEC Item 105",
+      "recommended_action": "Enhance disclosure on monitoring and enforcement"
     }
-  ]
+  ],
+  "best_practices": [
+    {
+      "area": "Supplier oversight",
+      "current_approach": "Reliance on partners",
+      "industry_benchmark": "Regular audits and certifications",
+      "improvement_suggestion": "Implement third-party audits"
+    }
+  ],
+  "audit_metadata": {
+    "review_date": "2025-07-25",
+    "regulations_checked": ["SEC", "SOX"],
+    "confidence_level": 4,
+    "follow_up_required": true
+  }
 }
 
 Paragraph: {paragraph}
@@ -121,121 +154,200 @@ Focus on identifying specific regulatory violations and providing actionable rem
     name: 'ESG Risk Assessment',
     template: `You are an ESG risk specialist with expertise in SASB, GRI, and TCFD frameworks.
 
-Analyze the paragraph for ESG-related risks:
+Analyze the paragraph for ESG-related risks using the integrated ESG Risk Assessment Protocol:
 
 **Assessment Framework:**
 1. Environmental Risks:
    - Climate change (physical & transition risks)
    - Resource scarcity (water, energy, raw materials)
    - Pollution & waste management
+   - Biodiversity impact
+   - Carbon footprint & emissions
 
 2. Social Risks:
    - Labor practices & human rights
    - Supply chain responsibility  
    - Product safety & quality
    - Community relations
+   - Data privacy & security
+   - Diversity, equity & inclusion
 
 3. Governance Risks:
    - Board composition & independence
    - Executive compensation alignment
    - Business ethics & corruption
    - Transparency & disclosure
+   - Stakeholder engagement
+   - Risk management oversight
 
-**Output Format:**
+**Few-Shot Examples:**
+
+Example 1:
+Paragraph: Driven by climate change concerns, regulatory frameworks adopted to reduce GHG emissions from oil and gas production and use.
+
+Output:
 {
   "esg_classification": {
-    "primary_category": "Environmental/Social/Governance",
-    "specific_risk_area": "string",
-    "materiality_score": 1-5,
-    "stakeholder_impact": ["investors", "customers", "employees", "communities", "regulators"]
+    "primary_category": "Environmental",
+    "specific_risk_area": "Climate change transition risks",
+    "materiality_score": 5,
+    "stakeholder_impact": ["Investors", "Regulators", "Communities"]
   },
   "risk_assessment": {
     "financial_impact": {
-      "magnitude": 1-5,
-      "timeframe": "short/medium/long-term",
-      "impact_type": "revenue/cost/asset_value/liability"
+      "magnitude": 4,
+      "timeframe": "medium-term",
+      "impact_type": "cost"
     },
     "reputation_risk": {
-      "severity": 1-5,
-      "media_sensitivity": "high/medium/low",
-      "stakeholder_concern": 1-5
+      "severity": 4,
+      "media_sensitivity": "high",
+      "stakeholder_concern": 5
     }
   },
+  "regulatory_landscape": {
+    "current_regulations": ["UN COP frameworks", "Canadian net zero objectives"],
+    "emerging_requirements": ["GHG emission reductions"],
+    "compliance_status": "at_risk"
+  },
   "mitigation_strategies": {
-    "current_initiatives": ["string"],
-    "effectiveness_rating": 1-5,
-    "recommended_improvements": ["string"]
+    "current_initiatives": ["Endorsing net zero objectives"],
+    "effectiveness_rating": 3,
+    "recommended_improvements": ["Develop detailed transition plans"],
+    "industry_best_practices": ["Scenario analysis for energy transition"]
+  },
+  "framework_alignment": {
+    "sasb_metrics": ["GHG Emissions"],
+    "gri_indicators": ["GRI 305: Emissions"],
+    "tcfd_recommendations": ["Strategy and Risk Management"],
+    "un_sdg_alignment": ["SDG 13: Climate Action"]
+  },
+  "confidence_assessment": {
+    "overall_confidence": 4,
+    "data_availability": "medium",
+    "framework_certainty": 4,
+    "precedent_clarity": 5
   }
 }
 
 Paragraph: {paragraph}
 
-Focus on material ESG risks with clear financial implications.`
+Focus on material ESG risks with clear financial implications and stakeholder impact.`
   },
   'financial_health_v3': {
     name: 'Financial Health Diagnostic',
-    template: `You are a senior credit analyst with CFA and FRM credentials. Perform comprehensive financial health assessment:
+    template: `You are a senior credit analyst with CFA and FRM credentials. Perform comprehensive financial health assessment using the Advanced Diagnostic Framework 3.0:
 
 **Multi-Dimensional Analysis:**
+
 1. Liquidity & Cash Flow Analysis:
    - Working capital adequacy assessment
    - Cash conversion cycle efficiency
    - Free cash flow sustainability
+   - Liquidity coverage ratio (if applicable)
+   - Debt maturity profile analysis
 
 2. Solvency & Capital Structure:
    - Leverage ratios vs. industry benchmarks
    - Interest coverage capability
    - Debt covenant compliance status
+   - Capital allocation efficiency
+   - Off-balance sheet exposure
 
 3. Profitability & Earnings Quality:
    - Revenue recognition practices
    - Margin sustainability analysis
    - Non-recurring items identification
+   - Cash vs. accrual earnings correlation
+   - Management guidance reliability
 
-**Output Format:**
+**Few-Shot Examples:**
+
+Example 1:
+Paragraph: Revenue growth in fiscal 2003 was driven primarily by multi-year licensing that occurred before the transition to our new licensing program.
+
+Output:
 {
   "financial_health_score": {
-    "overall_score": 1-100,
-    "rating_equivalent": "string",
-    "trend_direction": "improving/stable/deteriorating"
+    "overall_score": 85,
+    "percentile_rank": 75,
+    "rating_equivalent": "BBB+",
+    "trend_direction": "improving"
   },
   "liquidity_analysis": {
-    "liquidity_adequacy": "sufficient/adequate/concerning/critical",
-    "working_capital_trend": "string",
+    "current_ratio": 2.5,
+    "quick_ratio": 2.0,
+    "cash_ratio": 1.5,
+    "working_capital_trend": "positive",
+    "liquidity_adequacy": "sufficient",
     "cash_burn_analysis": {
-      "runway_months": "integer",
-      "seasonal_adjustments": "string"
+      "monthly_burn_rate": "N/A",
+      "runway_months": 24,
+      "seasonal_adjustments": "minimal"
     }
   },
   "solvency_metrics": {
+    "debt_to_equity": 0.4,
+    "interest_coverage": 15.0,
+    "debt_service_coverage": 5.0,
     "covenant_compliance": {
-      "status": "compliant/at_risk/breach",
-      "key_ratios": ["string"],
-      "margin_of_safety": "percentage"
+      "status": "compliant",
+      "key_ratios": ["Debt/EBITDA < 3.0"],
+      "margin_of_safety": "20%"
     }
   },
+  "earnings_quality": {
+    "accruals_ratio": 0.05,
+    "cash_earnings_correlation": 0.95,
+    "revenue_quality_score": 4,
+    "expense_management_score": 4,
+    "accounting_red_flags": []
+  },
+  "risk_indicators": {
+    "altman_z_score": {
+      "value": 4.2,
+      "interpretation": "Safe zone",
+      "bankruptcy_probability": "1%"
+    },
+    "distress_signals": [],
+    "early_warning_indicators": ["Transition to new licensing model"]
+  },
+  "peer_comparison": {
+    "industry_position": "above_median",
+    "key_differentiators": ["Strong revenue growth"],
+    "competitive_advantages": ["Multi-year licensing"],
+    "competitive_disadvantages": []
+  },
   "recommendations": {
-    "immediate_actions": ["string"],
-    "strategic_initiatives": ["string"],
-    "monitoring_priorities": ["string"]
+    "immediate_actions": [],
+    "strategic_initiatives": ["Monitor licensing transition"],
+    "monitoring_priorities": ["Revenue streams"],
+    "stakeholder_communications": ["Highlight growth drivers"]
+  },
+  "confidence_metrics": {
+    "data_quality": 5,
+    "model_reliability": 4,
+    "analyst_confidence": 5,
+    "key_assumptions": ["Stable market conditions"]
   }
 }
 
 Paragraph: {paragraph}
 
-Provide actionable insights with specific numerical thresholds.`
+Provide actionable insights with specific numerical thresholds and benchmarks where possible.`
   },
   'cybersecurity_risk_v2': {
-    name: 'Cybersecurity Risk',
-    template: `You are a cybersecurity risk specialist with expertise in NIST Cybersecurity Framework.
+    name: 'Cybersecurity Risk Assessment',
+    template: `You are a cybersecurity risk specialist with expertise in NIST Cybersecurity Framework and financial services security.
 
-Analyze the paragraph for cybersecurity risks:
+Analyze the paragraph for cybersecurity risks using the Integrated Cyber Risk Assessment Model:
 
 **Risk Categories:**
 1. Data Security Risks:
    - Data breach & exfiltration
    - Personal data protection (GDPR, CCPA)
    - Intellectual property theft
+   - Data integrity compromise
 
 2. Infrastructure Risks:
    - System availability & business continuity
@@ -247,40 +359,86 @@ Analyze the paragraph for cybersecurity risks:
    - Insider threats & privileged access
    - Social engineering & phishing
    - Ransomware & malware
+   - Supply chain attacks
 
-**Output Format:**
+**Few-Shot Examples:**
+
+Example 1:
+Paragraph: The Company's business and reputation are impacted by information technology system failures and network disruptions.
+
+Output:
 {
   "cyber_risk_profile": {
-    "primary_threat_category": "string",
-    "risk_severity": 1-10,
-    "attack_likelihood": 1-5,
-    "business_impact": 1-5
+    "primary_threat_category": "Infrastructure Risks",
+    "risk_severity": 8,
+    "attack_likelihood": 4,
+    "business_impact": 5,
+    "composite_cyber_score": 16.0
   },
   "threat_landscape": {
-    "threat_actors": ["nation_state", "cybercriminal", "insider", "hacktivist"],
-    "attack_vectors": ["string"],
-    "target_assets": ["string"]
+    "threat_actors": ["cybercriminal", "nation_state"],
+    "attack_vectors": ["ransomware", "computer viruses", "physical break-ins"],
+    "target_assets": ["IT systems", "supply chain"],
+    "vulnerability_assessment": {
+      "critical_vulnerabilities": 2,
+      "unpatched_systems": "20%",
+      "security_debt": "medium"
+    }
   },
   "control_effectiveness": {
     "preventive_controls": {
-      "score": 1-5,
-      "key_controls": ["string"],
-      "gaps_identified": ["string"]
+      "score": 3,
+      "key_controls": ["System redundancy"],
+      "gaps_identified": ["Inadequate disaster recovery"]
+    },
+    "detective_controls": {
+      "score": 2,
+      "monitoring_coverage": "70%",
+      "detection_capabilities": ["Intrusion detection"]
+    },
+    "response_controls": {
+      "score": 3,
+      "incident_response_maturity": 3,
+      "recovery_capabilities": ["Business continuity planning"]
+    }
+  },
+  "regulatory_compliance": {
+    "applicable_frameworks": ["NIST", "SEC Item 106"],
+    "compliance_status": "partial",
+    "disclosure_requirements": {
+      "sec_item_106": "needs_update",
+      "material_incidents": true,
+      "board_oversight": "adequate"
     }
   },
   "financial_impact": {
     "potential_loss_estimate": {
-      "low_scenario": "dollar_amount",
-      "high_scenario": "dollar_amount"
+      "low_scenario": "$10M",
+      "medium_scenario": "$50M",
+      "high_scenario": "$100M"
     },
     "business_disruption": {
-      "downtime_risk": "hours/days",
-      "revenue_impact": "percentage"
+      "downtime_risk": "days",
+      "revenue_impact": "15%",
+      "customer_impact": "high"
+    },
+    "recovery_costs": {
+      "incident_response": "$5M",
+      "system_restoration": "$20M",
+      "legal_regulatory": "$10M"
     }
   },
   "mitigation_roadmap": {
-    "immediate_actions": ["string"],
-    "investment_priorities": ["string"]
+    "immediate_actions": ["Enhance redundancy measures"],
+    "short_term_initiatives": ["Improve disaster recovery planning"],
+    "long_term_strategy": ["Adopt advanced cybersecurity frameworks"],
+    "investment_priorities": ["Vendor risk management"]
+  },
+  "confidence_assessment": {
+    "overall_confidence": 4,
+    "threat_intelligence_quality": 4,
+    "control_visibility": 3,
+    "assessment_limitations": ["Limited vendor details"]
   }
 }
 
@@ -289,62 +447,72 @@ Paragraph: {paragraph}
 Focus on material cybersecurity risks with quantifiable business impact.`
   },
   'operational_resilience_v2': {
-    name: 'Operational Resilience',
-    template: `You are an operational risk expert specializing in business continuity and operational resilience.
+    name: 'Operational Resilience Analysis',
+    template: `You are an operational risk specialist focusing on business continuity and operational resilience.
 
-Assess operational resilience:
+Analyze the following paragraph for operational risks and resilience factors using the Operational Resilience Framework:
 
-**Resilience Dimensions:**
-1. Process Resilience:
-   - Critical process identification
-   - Single points of failure
-   - Process automation & redundancy
-
-2. Technology Resilience:
-   - System availability & uptime
-   - Disaster recovery capabilities
-   - Technology debt assessment
-
-3. People Resilience:
+**Assessment Areas:**
+1. Business Continuity Threats:
+   - Supply chain disruptions
+   - Critical process failures
    - Key person dependencies
-   - Skills gap analysis
-   - Succession planning
+   - Technology infrastructure risks
 
-4. Third-Party Resilience:
-   - Vendor concentration risk
-   - Supply chain vulnerabilities
-   - Outsourcing risks
+2. Resilience Capabilities:
+   - Backup systems and redundancy
+   - Crisis management procedures
+   - Recovery time objectives
+   - Stress testing results
+
+3. Stakeholder Impact:
+   - Customer service disruption
+   - Regulatory compliance risks
+   - Financial implications
+   - Reputational damage
 
 **Output Format:**
 {
-  "resilience_assessment": {
-    "overall_resilience_score": 1-10,
-    "critical_vulnerabilities": "integer",
-    "recovery_capability": "strong/adequate/weak"
+  "operational_assessment": {
+    "resilience_score": 1-10,
+    "vulnerability_level": "low/medium/high/critical",
+    "business_impact": 1-5,
+    "recovery_capability": 1-5
   },
-  "process_analysis": {
-    "critical_processes": ["string"],
-    "failure_points": ["string"],
-    "automation_level": "percentage"
+  "risk_factors": {
+    "supply_chain_risks": ["string"],
+    "technology_dependencies": ["string"],
+    "process_vulnerabilities": ["string"],
+    "human_capital_risks": ["string"]
   },
-  "technology_infrastructure": {
-    "system_availability": "percentage",
-    "recovery_time_objective": "hours",
-    "technology_debt": {
-      "legacy_systems": "percentage",
-      "modernization_priority": "high/medium/low"
-    }
+  "mitigation_controls": {
+    "existing_controls": ["string"],
+    "control_effectiveness": 1-5,
+    "gaps_identified": ["string"],
+    "recommended_improvements": ["string"]
   },
-  "improvement_recommendations": {
-    "priority_actions": ["string"],
-    "investment_requirements": "dollar_estimate",
-    "timeline_for_implementation": "months"
+  "business_impact": {
+    "customer_impact": "low/medium/high",
+    "financial_exposure": "estimated amount",
+    "regulatory_implications": ["string"],
+    "reputational_risk": 1-5
+  },
+  "recovery_planning": {
+    "rto_assessment": "hours/days",
+    "backup_capabilities": ["string"],
+    "testing_frequency": "regular/periodic/insufficient",
+    "improvement_priorities": ["string"]
+  },
+  "confidence_assessment": {
+    "overall_confidence": 1-5,
+    "data_completeness": "high/medium/low",
+    "assessment_limitations": ["string"]
   }
 }
 
 Paragraph: {paragraph}
 
-Provide specific, actionable recommendations for improving operational resilience.`
+Focus on business continuity threats and resilience capabilities.`
   }
 };
 
