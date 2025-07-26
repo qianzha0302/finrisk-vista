@@ -1,4 +1,3 @@
-```python
 # utils/prompt_registry.py
 # Enhanced Prompt Registry with Compliance Features and Self-Evaluation
 # Modified to include few-shot examples in each prompt template for improved performance
@@ -2675,4 +2674,3 @@ def calculate_composite_risk_score(severity: int, velocity: int, confidence: flo
     base_score = (severity * velocity) / 2
     confidence_adjustment = confidence / 5.0
     return round(base_score * confidence_adjustment, 2)
-```
