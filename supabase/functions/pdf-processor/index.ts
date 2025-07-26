@@ -173,27 +173,55 @@ serve(async (req) => {
   }
 
   try {
-    console.log('PDF Processor function called');
+    console.log('PDF Processor function called with method:', req.method);
+    console.log('Headers:', Object.fromEntries(req.headers.entries()));
     
     if (req.method !== 'POST') {
+      console.error('Invalid method:', req.method);
       throw new Error('Method not allowed');
     }
 
-    const formData = await req.formData();
+    let formData;
+    try {
+      formData = await req.formData();
+      console.log('FormData received successfully');
+    } catch (formError) {
+      console.error('Failed to parse FormData:', formError);
+      throw new Error(`Failed to parse form data: ${formError.message}`);
+    }
+
     const file = formData.get('file') as File;
     const documentId = formData.get('document_id') as string;
     const companyName = formData.get('company_name') as string;
 
+    console.log('Form fields received:', {
+      hasFile: !!file,
+      fileSize: file?.size,
+      fileName: file?.name,
+      fileType: file?.type,
+      documentId,
+      companyName
+    });
+
     if (!file || !documentId || !companyName) {
+      console.error('Missing required fields:', { file: !!file, documentId, companyName });
       throw new Error('Missing required fields: file, document_id, or company_name');
     }
 
-    console.log(`Processing PDF: ${file.name} for ${companyName}`);
+    console.log(`Processing PDF: ${file.name} (${file.size} bytes) for ${companyName}`);
 
     // Convert file to array buffer
-    const arrayBuffer = await file.arrayBuffer();
+    let arrayBuffer;
+    try {
+      arrayBuffer = await file.arrayBuffer();
+      console.log('Successfully converted file to ArrayBuffer, size:', arrayBuffer.byteLength);
+    } catch (bufferError) {
+      console.error('Failed to convert file to ArrayBuffer:', bufferError);
+      throw new Error(`Failed to read file: ${bufferError.message}`);
+    }
     
     // Extract text using our custom function
+    console.log('Starting text extraction...');
     const { text: fullText, numPages } = await extractTextFromPDF(arrayBuffer);
     
     console.log(`PDF processed with ${numPages} pages`);

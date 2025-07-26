@@ -54,12 +54,23 @@ export const usePDFProcessor = () => {
 
       setProgress({ stage: 'parsing', progress: 25 })
 
+      console.log('Calling PDF processor edge function with:', {
+        fileName: file.name,
+        fileSize: file.size,
+        fileType: file.type,
+        documentId,
+        companyName
+      });
+
       // Call the PDF processor edge function
       const { data, error } = await supabase.functions.invoke('pdf-processor', {
         body: formData,
       })
 
+      console.log('Edge function response:', { data, error });
+
       if (error) {
+        console.error('Edge function error details:', error);
         throw new Error(`Edge function error: ${error.message}`)
       }
 
