@@ -129,9 +129,16 @@ async function extractTextFromPDF(buffer: ArrayBuffer): Promise<{ text: string; 
     
     // Final text cleanup and paragraph formatting
     fullText = fullText
-      .replace(/\s+/g, ' ') // Normalize whitespace
-      .replace(/([.!?])\s+([A-Z])/g, '$1\n\n$2') // Add paragraph breaks after sentences
-      .replace(/\n{3,}/g, '\n\n') // Normalize paragraph breaks
+      // Remove all control characters and non-printable characters
+      .replace(/[\x00-\x1F\x7F-\x9F]/g, ' ')
+      // Remove any remaining binary sequences
+      .replace(/[^\x20-\x7E\s]/g, ' ')
+      // Normalize whitespace
+      .replace(/\s+/g, ' ')
+      // Add paragraph breaks after sentences
+      .replace(/([.!?])\s+([A-Z])/g, '$1\n\n$2')
+      // Normalize paragraph breaks
+      .replace(/\n{3,}/g, '\n\n')
       .trim();
     
     if (!fullText) {
