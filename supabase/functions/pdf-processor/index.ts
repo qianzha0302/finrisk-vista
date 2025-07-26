@@ -10,6 +10,9 @@ const corsHeaders = {
 // Import PDF.js for better text extraction
 import * as pdfjsLib from 'https://esm.sh/pdfjs-dist@4.0.379/build/pdf.min.mjs';
 
+// Configure PDF.js worker
+pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://esm.sh/pdfjs-dist@4.0.379/build/pdf.worker.min.mjs';
+
 // Financial keywords to filter for relevant sections
 const FINANCIAL_KEYWORDS = [
   "risk factors", "item 1a", "item 7", "management's discussion", 
@@ -106,36 +109,63 @@ function filterRelevantPages(pages: PageText[]): PageText[] {
 function chunkText(text: string, chunkSize: number = 800, overlap: number = 150): string[] {
   const chunks: string[] = [];
   
-  // First, split by sentences for better coherence
-  const sentences = text.split(/[.!?]+/).filter(s => s.trim().length > 0);
+  if (text.length <= chunkSize) {
+    return [text];
+  }
   
-  let currentChunk = '';
-  let currentSize = 0;
+  let start = 0;
   
-  for (const sentence of sentences) {
-    const sentenceLength = sentence.trim().length;
+  while (start < text.length) {
+    let end = start + chunkSize;
     
-    // If adding this sentence would exceed chunk size, finalize current chunk
-    if (currentSize + sentenceLength > chunkSize && currentChunk.length > 0) {
-      chunks.push(currentChunk.trim());
+    // If we're not at the end of the text, try to break at a sentence boundary
+    if (end < text.length) {
+      const lastSentenceEnd = text.lastIndexOf('.', end);
+      const lastQuestionEnd = text.lastIndexOf('?', end);
+      const lastExclamationEnd = text.lastIndexOf('!', end);
       
-      // Start new chunk with overlap
-      const words = currentChunk.split(' ');
-      const overlapWords = words.slice(-Math.floor(overlap / 10)); // Approximate word overlap
-      currentChunk = overlapWords.join(' ') + ' ' + sentence.trim();
-      currentSize = currentChunk.length;
-    } else {
-      currentChunk += (currentChunk ? ' ' : '') + sentence.trim();
-      currentSize = currentChunk.length;
+      const sentenceEnd = Math.max(lastSentenceEnd, lastQuestionEnd, lastExclamationEnd);
+      
+      if (sentenceEnd > start + chunkSize / 2) {
+        end = sentenceEnd + 1;
+      }
+    }
+    
+    const chunk = text.slice(start, end).trim();
+    if (chunk.length > 50) {
+      chunks.push(chunk);
+    }
+    
+    // Move start position with overlap
+    start = Math.max(start + chunkSize - overlap, end - overlap);
+    
+    // Prevent infinite loop
+    if (start >= text.length - overlap) {
+      break;
     }
   }
   
-  // Add the last chunk if it has content
-  if (currentChunk.trim().length > 50) {
-    chunks.push(currentChunk.trim());
+  return chunks.filter(chunk => chunk.length > 50);
+}
+
+function identifySection(content: string): string {
+  const sectionPatterns = [
+    { pattern: /Item\s+1A\.?\s+Risk Factors/i, name: 'Risk Factors' },
+    { pattern: /Management's Discussion and Analysis/i, name: 'MD&A' },
+    { pattern: /Financial Statements/i, name: 'Financial Statements' },
+    { pattern: /Item\s+8\.?\s+Financial Statements/i, name: 'Financial Statements' },
+    { pattern: /Item\s+7\.?\s+/i, name: 'MD&A' },
+    { pattern: /footnotes?/i, name: 'Footnotes' },
+    { pattern: /notes? to /i, name: 'Notes' }
+  ];
+  
+  for (const { pattern, name } of sectionPatterns) {
+    if (pattern.test(content)) {
+      return name;
+    }
   }
   
-  return chunks.filter(chunk => chunk.length > 50); // Only return meaningful chunks
+  return 'General';
 }
 
 interface PDFChunk {
@@ -143,6 +173,8 @@ interface PDFChunk {
   page: number;
   metadata: {
     company: string;
+    section_name: string;
+    page_number: number;
   };
 }
 
@@ -232,13 +264,18 @@ serve(async (req) => {
     for (const page of relevantPages) {
       if (page.content.trim().length > 100) { // Only process pages with substantial content
         const pageChunks = chunkText(page.content);
+        const sectionName = identifySection(page.content);
         
         // Add chunks with page metadata
         for (const chunk of pageChunks) {
           paragraphs.push({
             text: chunk,
             page: page.pageNum,
-            metadata: { company: companyName }
+            metadata: { 
+              company: companyName,
+              section_name: sectionName,
+              page_number: page.pageNum
+            }
           });
         }
         
