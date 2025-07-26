@@ -6,12 +6,14 @@ import { Label } from '@/components/ui/label'
 import { Progress } from '@/components/ui/progress'
 import { useAuth } from '@/hooks/useAuth'
 import { usePDFProcessor } from '@/hooks/usePDFProcessor'
+import { useDocuments } from '@/hooks/useDocuments'
 import toast from 'react-hot-toast'
 import { Upload, FileText, AlertCircle, CheckCircle2 } from 'lucide-react'
 
 const UploadDocument = () => {
   const { user } = useAuth()
   const { processPDF, processing, progress } = usePDFProcessor()
+  const { saveDocument } = useDocuments()
   const [loading, setLoading] = useState(false)
   const [formData, setFormData] = useState({
     file: null as File | null,
@@ -59,6 +61,10 @@ const UploadDocument = () => {
   }
 
   const handlePDFProcessing = async () => {
+    if (!user) {
+      throw new Error('User not authenticated')
+    }
+
     try {
       toast.success('开始处理PDF文档...')
       
@@ -68,23 +74,17 @@ const UploadDocument = () => {
         formData.company_name
       )
 
-      // Store processed result in localStorage
-      localStorage.setItem(`document_${formData.document_id}`, JSON.stringify(result))
-      
-      // Also store in the uploadedDocuments array for easier access
-      const existingDocs = JSON.parse(localStorage.getItem('uploadedDocuments') || '[]')
-      const updatedDocs = [...existingDocs.filter((doc: any) => doc.id !== formData.document_id), {
-        id: formData.document_id,
-        name: formData.file?.name,
+      // Store processed result in Supabase database
+      await saveDocument({
+        document_id: formData.document_id,
         company_name: formData.company_name,
+        file_name: formData.file?.name || 'unknown.pdf',
         content: result.content,
-        text: result.text,
-        paragraphs: result.paragraphs,
-        uploaded_at: new Date().toISOString()
-      }]
-      localStorage.setItem('uploadedDocuments', JSON.stringify(updatedDocs))
+        text_content: result.text,
+        paragraphs: result.paragraphs
+      })
       
-      toast.success(`PDF处理完成！提取了 ${result.paragraphs.length} 个风险相关段落`)
+      toast.success(`PDF处理完成！提取了 ${result.paragraphs?.length || 0} 个风险相关段落`)
       console.log('PDF处理结果:', result)
     } catch (error) {
       console.error('PDF处理错误:', error)

@@ -5,6 +5,7 @@ import { Label } from '@/components/ui/label'
 import { Checkbox } from '@/components/ui/checkbox'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useAuth } from '@/hooks/useAuth'
+import { useDocuments } from '@/hooks/useDocuments'
 import toast from 'react-hot-toast'
 import { BarChart3, FileText, AlertTriangle } from 'lucide-react'
 import RiskVisualization from '@/components/RiskVisualization'
@@ -46,68 +47,18 @@ const AVAILABLE_PROMPTS = [
 
 const RiskAnalysis = () => {
   const { user } = useAuth()
+  const { documents } = useDocuments()
   const [loading, setLoading] = useState(false)
   const [selectedPrompts, setSelectedPrompts] = useState<string[]>(['risk_classifier'])
   const [result, setResult] = useState<any>(null)
-  const [availableDocuments, setAvailableDocuments] = useState<any[]>([])
   const [selectedDocument, setSelectedDocument] = useState<string>('')
 
-  // Load available documents from localStorage
+  // Auto-select first document if none selected
   useEffect(() => {
-    const loadDocuments = () => {
-      const documents = []
-      
-      // First, try to load from uploadedDocuments array
-      try {
-        const uploadedDocs = JSON.parse(localStorage.getItem('uploadedDocuments') || '[]')
-        uploadedDocs.forEach((doc: any) => {
-          documents.push({
-            id: doc.id,
-            company_name: doc.company_name || doc.name,
-            name: doc.name,
-            content: doc.content || doc.text || '',
-            uploaded_at: doc.uploaded_at
-          })
-        })
-      } catch (error) {
-        console.error('Error loading uploadedDocuments:', error)
-      }
-      
-      // Then, check individual document_ keys in localStorage
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i)
-        if (key?.startsWith('document_')) {
-          try {
-            const docData = JSON.parse(localStorage.getItem(key) || '{}')
-            const docId = key.replace('document_', '')
-            
-            // Only add if not already in documents array
-            if (!documents.find(doc => doc.id === docId)) {
-              documents.push({
-                id: docId,
-                company_name: docData.company_name || 'Unknown Company',
-                name: docData.file_name || `Document ${docId}`,
-                content: docData.content || docData.text || '',
-                uploaded_at: new Date().toISOString()
-              })
-            }
-          } catch (error) {
-            console.error('Error parsing document data:', error)
-          }
-        }
-      }
-      
-      console.log('Loaded documents:', documents)
-      setAvailableDocuments(documents)
-      
-      // Auto-select first document if none selected
-      if (documents.length > 0 && !selectedDocument) {
-        setSelectedDocument(documents[0].id)
-      }
+    if (documents.length > 0 && !selectedDocument) {
+      setSelectedDocument(documents[0].document_id)
     }
-
-    loadDocuments()
-  }, [])
+  }, [documents, selectedDocument])
 
   const togglePrompt = (promptId: string) => {
     setSelectedPrompts(prev => 
@@ -126,21 +77,16 @@ const RiskAnalysis = () => {
     setLoading(true)
     
     try {
-      // Get document data - try both sources
-      let documentContent = ''
-      let documentName = ''
-      
-      // First try from uploadedDocuments array
-      const selectedDoc = availableDocuments.find(doc => doc.id === selectedDocument)
-      if (selectedDoc && selectedDoc.content) {
-        documentContent = selectedDoc.content
-        documentName = selectedDoc.company_name || selectedDoc.name || 'Unknown Document'
-      } else {
-        // Fallback to individual localStorage entry
-        const documentData = JSON.parse(localStorage.getItem(`document_${selectedDocument}`) || '{}')
-        documentContent = documentData.content || documentData.text || ''
-        documentName = documentData.company_name || documentData.file_name || 'Unknown Document'
+      // Get document data from Supabase
+      const selectedDoc = documents.find(doc => doc.document_id === selectedDocument)
+      if (!selectedDoc) {
+        toast.error('Document not found')
+        setLoading(false)
+        return
       }
+      
+      const documentContent = selectedDoc.content || selectedDoc.text_content || ''
+      const documentName = selectedDoc.company_name || 'Unknown Document'
       
       if (!documentContent) {
         toast.error('No document content found for analysis')
@@ -208,17 +154,17 @@ const RiskAnalysis = () => {
             {/* Document Selection Section */}
             <div className="space-y-4">
               <Label>Select Document</Label>
-              {availableDocuments.length > 0 ? (
+              {documents.length > 0 ? (
                 <Select value={selectedDocument} onValueChange={setSelectedDocument}>
                   <SelectTrigger className="w-full">
                     <SelectValue placeholder="Choose a document to analyze" />
                   </SelectTrigger>
                   <SelectContent>
-                    {availableDocuments.map((doc) => (
-                      <SelectItem key={doc.id} value={doc.id}>
+                    {documents.map((doc) => (
+                      <SelectItem key={doc.document_id} value={doc.document_id}>
                         <div className="flex items-center space-x-2">
                           <FileText className="h-4 w-4" />
-                          <span>{doc.company_name || 'Unknown Company'} - {doc.name || doc.id}</span>
+                          <span>{doc.company_name} - {doc.file_name}</span>
                         </div>
                       </SelectItem>
                     ))}
@@ -234,12 +180,12 @@ const RiskAnalysis = () => {
               )}
 
               {/* Document Info */}
-              {selectedDocument && availableDocuments.length > 0 && (
+              {selectedDocument && documents.length > 0 && (
                 <div className="p-3 border rounded-lg bg-muted/20">
                   <div className="text-sm">
                     <div className="font-medium">Selected Document:</div>
                     <div className="text-muted-foreground">
-                      {availableDocuments.find(doc => doc.id === selectedDocument)?.company_name}
+                      {documents.find(doc => doc.document_id === selectedDocument)?.company_name}
                     </div>
                     <div className="text-xs text-muted-foreground mt-1">
                       ID: {selectedDocument}
