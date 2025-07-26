@@ -7,38 +7,104 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Import a Node.js compatible PDF library for Deno
-// Using pdf-lib which works better in server environments
+// Import PDF processing library compatible with Deno
+import { PDFDocument } from 'https://esm.sh/pdf-lib@1.17.1';
+
 const decoder = new TextDecoder();
 
 async function extractTextFromPDF(buffer: ArrayBuffer): Promise<{ text: string; numPages: number }> {
   try {
-    // For now, let's use a simple approach - we'll simulate PDF processing
-    // In a real implementation, you might want to use a different PDF library
-    // that's more compatible with Deno edge functions
-    
     console.log('Processing PDF buffer of size:', buffer.byteLength);
     
-    // Simple text extraction simulation
-    // In reality, you'd use a proper PDF parsing library
-    const text = `Risk Assessment Document
+    // Load PDF document
+    const pdfDoc = await PDFDocument.load(buffer);
+    const pages = pdfDoc.getPages();
+    const numPages = pages.length;
     
-    This document contains various risk factors and uncertainties that may affect our business operations.
+    console.log(`PDF loaded with ${numPages} pages`);
     
-    Market Risk: The company faces significant exposure to market volatility and fluctuations in commodity prices.
+    let fullText = '';
     
-    Credit Risk: There are potential threats from counterparty defaults and credit exposures across our portfolio.
+    // Extract text from each page
+    // Note: pdf-lib doesn't have direct text extraction, so we'll use a different approach
+    // We'll try to extract the raw content and parse it
     
-    Operational Risk: Various operational challenges may impact our ability to deliver services effectively.
+    try {
+      // Try to extract text using a more manual approach
+      const pdfBytes = new Uint8Array(buffer);
+      const pdfString = decoder.decode(pdfBytes);
+      
+      // Look for text objects in PDF content
+      const textRegex = /\((.*?)\)/g;
+      const textMatches = pdfString.match(textRegex);
+      
+      if (textMatches) {
+        fullText = textMatches
+          .map(match => match.slice(1, -1)) // Remove parentheses
+          .filter(text => text.length > 2) // Filter out short fragments
+          .join(' ');
+      }
+      
+      // If no text found through regex, extract from stream objects
+      if (!fullText.trim()) {
+        const streamRegex = /stream\s*(.*?)\s*endstream/gs;
+        const streamMatches = pdfString.match(streamRegex);
+        
+        if (streamMatches) {
+          for (const stream of streamMatches) {
+            const streamContent = stream.replace(/^stream\s*/, '').replace(/\s*endstream$/, '');
+            // Look for readable text in streams
+            const readableText = streamContent.match(/[a-zA-Z\s]{10,}/g);
+            if (readableText) {
+              fullText += readableText.join(' ') + ' ';
+            }
+          }
+        }
+      }
+      
+      // If still no text, try to extract from direct text objects
+      if (!fullText.trim()) {
+        const tjRegex = /\[(.*?)\]\s*TJ/g;
+        const tjMatches = pdfString.match(tjRegex);
+        
+        if (tjMatches) {
+          fullText = tjMatches
+            .map(match => match.replace(/\[(.*?)\]\s*TJ/, '$1'))
+            .join(' ');
+        }
+      }
+      
+    } catch (textError) {
+      console.warn('Advanced text extraction failed, using fallback:', textError);
+      
+      // Fallback: extract any readable text from the PDF bytes
+      const readableTextRegex = /[A-Za-z]{3,}[\s\w.,!?;:'-]*/g;
+      const readableMatches = decoder.decode(pdfBytes).match(readableTextRegex);
+      
+      if (readableMatches) {
+        fullText = readableMatches
+          .filter(text => text.length > 5)
+          .join(' ');
+      }
+    }
     
-    Liquidity Risk: The company maintains exposure to funding and liquidity constraints in stressed market conditions.
+    // Clean up the extracted text
+    fullText = fullText
+      .replace(/\s+/g, ' ') // Normalize whitespace
+      .replace(/[^\w\s.,!?;:'-]/g, ' ') // Remove special characters
+      .trim();
     
-    Regulatory Risk: Changes in regulatory environment pose threats to our operational framework.`;
+    if (!fullText) {
+      throw new Error('No text could be extracted from the PDF');
+    }
     
-    return { text, numPages: 1 };
+    console.log(`Extracted ${fullText.length} characters of text`);
+    
+    return { text: fullText, numPages };
+    
   } catch (error) {
     console.error('Error extracting text from PDF:', error);
-    throw error;
+    throw new Error(`PDF processing failed: ${error.message}`);
   }
 }
 
