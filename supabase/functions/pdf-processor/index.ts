@@ -8,82 +8,130 @@ const corsHeaders = {
 };
 
 // Import PDF processing library compatible with Deno
-import { getDocument } from 'https://esm.sh/pdfjs-dist@4.8.69/legacy/build/pdf.mjs';
-import 'https://esm.sh/pdfjs-dist@4.8.69/legacy/build/pdf.worker.mjs';
+import { PDFDocument } from 'https://esm.sh/pdf-lib@1.17.1';
+
+const decoder = new TextDecoder();
 
 async function extractTextFromPDF(buffer: ArrayBuffer): Promise<{ text: string; numPages: number }> {
   try {
     console.log('Processing PDF buffer of size:', buffer.byteLength);
     
-    // Load PDF document using pdf.js
-    const typedArray = new Uint8Array(buffer);
-    const loadingTask = getDocument({ data: typedArray, disableFontFace: true });
-    const pdfDoc = await loadingTask.promise;
-    const numPages = pdfDoc.numPages;
+    // Load PDF document
+    const pdfDoc = await PDFDocument.load(buffer);
+    const pages = pdfDoc.getPages();
+    const numPages = pages.length;
     
     console.log(`PDF loaded with ${numPages} pages`);
     
     let fullText = '';
     
-    // Extract text from each page
-    for (let pageNum = 1; pageNum <= numPages; pageNum++) {
-      try {
-        const page = await pdfDoc.getPage(pageNum);
-        const textContent = await page.getTextContent();
+    // Improved text extraction approach
+    try {
+      const pdfBytes = new Uint8Array(buffer);
+      const pdfString = decoder.decode(pdfBytes);
+      
+      // Extract text using multiple strategies for better paragraph detection
+      
+      // Strategy 1: Extract from parentheses (most common in PDFs)
+      const textRegex = /\(((?:[^()\\]|\\.)*)\)/g;
+      const textMatches = [];
+      let match;
+      
+      while ((match = textRegex.exec(pdfString)) !== null) {
+        const text = match[1]
+          .replace(/\\([()\\])/g, '$1') // Unescape special characters
+          .replace(/\\n/g, '\n') // Handle explicit newlines
+          .replace(/\\r/g, '\r') // Handle carriage returns
+          .replace(/\\t/g, '\t'); // Handle tabs
         
-        // Extract text items and reconstruct paragraphs
-        const textItems = textContent.items;
-        let pageText = '';
-        let currentLine = '';
-        let lastY = null;
-        let lastX = null;
+        if (text.length > 1) {
+          textMatches.push(text);
+        }
+      }
+      
+      if (textMatches.length > 0) {
+        // Reconstruct paragraphs by analyzing text patterns
+        let reconstructedText = '';
+        let currentParagraph = '';
         
-        for (const item of textItems) {
-          if ('str' in item && 'transform' in item) {
-            const text = item.str;
-            const x = item.transform[4];
-            const y = item.transform[5];
-            
-            // Check if this is a new line based on Y coordinate
-            if (lastY !== null && Math.abs(y - lastY) > 5) {
-              // New line detected
-              if (currentLine.trim()) {
-                pageText += currentLine.trim() + '\n';
-                currentLine = '';
-              }
+        for (let i = 0; i < textMatches.length; i++) {
+          const text = textMatches[i].trim();
+          
+          if (!text) continue;
+          
+          // Check if this looks like a continuation of the previous text
+          const nextText = textMatches[i + 1]?.trim() || '';
+          const isEndOfSentence = /[.!?]\s*$/.test(text);
+          const isNewParagraph = /^[A-Z]/.test(nextText) && isEndOfSentence;
+          const isListItem = /^[\d•\-\*]\s/.test(text);
+          
+          currentParagraph += text;
+          
+          // Add space if the current text doesn't end with punctuation and next text exists
+          if (nextText && !text.endsWith(' ') && !/[.!?;:,]\s*$/.test(text)) {
+            currentParagraph += ' ';
+          }
+          
+          // Start new paragraph if:
+          // 1. Current text ends with sentence punctuation and next starts with capital
+          // 2. Current text is a list item
+          // 3. Significant content change detected
+          if (isNewParagraph || isListItem || i === textMatches.length - 1) {
+            if (currentParagraph.trim()) {
+              reconstructedText += currentParagraph.trim() + '\n\n';
+              currentParagraph = '';
             }
-            // Check for significant horizontal gap (new column or section)
-            else if (lastX !== null && x - lastX > 20) {
-              currentLine += ' ';
-            }
-            
-            currentLine += text + ' ';
-            lastY = y;
-            lastX = x + (item.width || 0);
           }
         }
         
-        // Add remaining text
-        if (currentLine.trim()) {
-          pageText += currentLine.trim() + '\n';
+        fullText = reconstructedText;
+      }
+      
+      // Strategy 2: Fallback to TJ arrays if previous method failed
+      if (!fullText.trim()) {
+        const tjRegex = /\[((?:[^\[\]\\]|\\.)*)\]\s*TJ/g;
+        const tjMatches = [];
+        
+        while ((match = tjRegex.exec(pdfString)) !== null) {
+          const content = match[1];
+          // Parse array content
+          const textParts = content.match(/\(((?:[^()\\]|\\.)*)\)/g);
+          if (textParts) {
+            const text = textParts.map(part => 
+              part.slice(1, -1).replace(/\\([()\\])/g, '$1')
+            ).join('');
+            
+            if (text.trim().length > 2) {
+              tjMatches.push(text);
+            }
+          }
         }
         
-        // Add page break marker
-        fullText += pageText + '\n\n';
-        
-        console.log(`Extracted text from page ${pageNum}: ${pageText.length} characters`);
-        
-      } catch (pageError) {
-        console.warn(`Failed to extract text from page ${pageNum}:`, pageError);
+        if (tjMatches.length > 0) {
+          fullText = tjMatches.join(' ');
+        }
+      }
+      
+    } catch (textError) {
+      console.warn('Text extraction failed:', textError);
+      
+      // Ultimate fallback: extract readable sequences
+      const pdfBytes = new Uint8Array(buffer);
+      const readableTextRegex = /[A-Za-z][A-Za-z\s.,!?;:'"()-]{10,}/g;
+      const readableMatches = decoder.decode(pdfBytes).match(readableTextRegex);
+      
+      if (readableMatches) {
+        fullText = readableMatches
+          .filter(text => text.length > 10)
+          .join(' ');
       }
     }
     
-    // Clean up the extracted text
+    // Final text cleanup and paragraph formatting
     fullText = fullText
+      .replace(/\s+/g, ' ') // Normalize whitespace
+      .replace(/([.!?])\s+([A-Z])/g, '$1\n\n$2') // Add paragraph breaks after sentences
       .replace(/\n{3,}/g, '\n\n') // Normalize paragraph breaks
-      .replace(/[ \t]+/g, ' ') // Normalize spaces
-      .replace(/\n /g, '\n') // Remove spaces at line start
-      .replace(/ \n/g, '\n') // Remove spaces at line end
       .trim();
     
     if (!fullText) {
